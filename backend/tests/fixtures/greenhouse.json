@@ -1,0 +1,12 @@
+{"jobs": [
+  {"id": 4012, "title": "Senior Backend Engineer (m/f/d)",
+   "updated_at": "2026-09-02T10:11:12Z",
+   "location": {"name": "Berlin"},
+   "absolute_url": "https://boards.greenhouse.io/northwind/jobs/4012",
+   "content": "<p>You will own the ledger API.</p><ul><li>Go</li><li>Postgres</li></ul>",
+   "pay_input_ranges": [{"min_cents": 8000000, "max_cents": 10500000, "currency_type": "EUR"}]},
+  {"id": 4013, "title": "", "location": {"name": "Berlin"}, "content": "no title, skip me"},
+  {"id": 4014, "title": "Platform Engineer", "location": null,
+   "absolute_url": "https://boards.greenhouse.io/northwind/jobs/4014",
+   "content": "Keep the platform up.", "pay_input_ranges": []}
+]}

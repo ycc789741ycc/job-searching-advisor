@@ -1,0 +1,9 @@
+{"jobs": [
+  {"id": "9f0", "title": "Senior Full-Stack Engineer", "location": "Berlin",
+   "jobUrl": "https://jobs.ashbyhq.com/fieldnote/9f0",
+   "descriptionPlain": "Ship product end to end.",
+   "publishedAt": "2026-08-20T00:00:00+00:00",
+   "compensation": {"summaryComponents": [
+     {"compensationType": "Salary", "minValue": 75000, "maxValue": 95000, "currencyCode": "EUR"},
+     {"compensationType": "Equity", "minValue": 1, "maxValue": 2, "currencyCode": "EUR"}]}}
+]}

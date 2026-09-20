@@ -43,8 +43,14 @@ ensure_role migrator    "$MIGRATOR_PASSWORD"
 psql_super -q -c "GRANT CREATE, CONNECT ON DATABASE \"$POSTGRES_DB\" TO migrator;"
 psql_super -q -c "GRANT CONNECT ON DATABASE \"$POSTGRES_DB\" TO app_rw, crawler_rw, aggregator;"
 
-# Nobody gets the implicit public-schema rights Postgres hands out by default.
+# Nobody gets the implicit public-schema rights Postgres hands out by default:
+# no role may create objects there. USAGE is granted back because extension
+# types (pgvector's `vector`) live in public and must be referenceable.
 psql_super -q -c "REVOKE ALL ON SCHEMA public FROM PUBLIC;"
+psql_super -q -c "GRANT USAGE ON SCHEMA public TO app_rw, crawler_rw, aggregator, migrator;"
+
+# Alembic's bookkeeping lives here, because public has no default grants.
+psql_super -q -c 'CREATE SCHEMA IF NOT EXISTS migrations AUTHORIZATION migrator;'
 
 psql_super -q -c "CREATE EXTENSION IF NOT EXISTS vector;"
 psql_super -q -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"

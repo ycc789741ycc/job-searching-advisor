@@ -1,0 +1,544 @@
+"""The market module's only importable surface.
+
+Two audiences with very different rights:
+
+* ``MarketService`` — api and worker. Owner-zone reads and writes.
+* ``CrawlIngest`` — the crawler deployable. Shared zone only. It is given a
+  session built from the ``crawler_rw`` role, which has no grant on any user
+  schema, so a mistake here fails at the database rather than leaking.
+
+The domain value objects the crawler needs are re-exported here, because the
+crawler may not import ``modules.market.domain`` directly.
+"""
+
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+
+from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from kernel.db import Database
+from kernel.db.base import utcnow
+from kernel.errors import NotFoundError, RateLimitedError, ValidationError
+from kernel.outbox import EventName, emit
+from modules.market.domain import (
+    Coverage,
+    NormalizedPosting,
+    PostingStatus,
+    SalaryRange,
+    SourceKind,
+    Visibility,
+    band_from,
+    canonical_key,
+    normalize,
+)
+from modules.market.infra.models import (
+    Company,
+    CompanySubscription,
+    CrawlSource,
+    JobPosting,
+    ManualRefreshLog,
+    MarketPreference,
+    PostingEmbedding,
+    PrivateJobPosting,
+)
+
+__all__ = [
+    "CompanySubscriptionView",
+    "Coverage",
+    "CrawlIngest",
+    "CrawlSourceView",
+    "MarketService",
+    "NormalizedPosting",
+    "PostingStatus",
+    "PostingView",
+    "SalaryRange",
+    "SourceKind",
+    "Visibility",
+    "canonical_key",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class CrawlSourceView:
+    id: uuid.UUID
+    kind: str
+    endpoint: str
+    company_id: uuid.UUID | None
+    company_name: str | None
+    market: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class CompanySubscriptionView:
+    id: uuid.UUID
+    company_id: uuid.UUID
+    company_name: str
+    coverage: Coverage
+    last_refreshed_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class PostingView:
+    id: uuid.UUID
+    company_name: str
+    title: str
+    location: str | None
+    url: str | None
+    description: str
+    visibility: Visibility
+    salary: SalaryRange | None
+
+
+class CrawlIngest:
+    """What the crawler may do. Shared zone only; no user data, ever."""
+
+    def __init__(self, database: Database) -> None:
+        self._db = database
+
+    async def due_sources(self) -> list[CrawlSourceView]:
+        async with self._db.shared() as session:
+            rows = await session.execute(
+                select(CrawlSource, Company.name)
+                .outerjoin(Company, CrawlSource.company_id == Company.id)
+                .where(CrawlSource.status == "active")
+            )
+            return [
+                CrawlSourceView(
+                    id=source.id,
+                    kind=source.kind,
+                    endpoint=source.endpoint,
+                    company_id=source.company_id,
+                    company_name=company_name,
+                    market=source.market,
+                )
+                for source, company_name in rows.all()
+            ]
+
+    async def record_crawl(
+        self,
+        source_id: uuid.UUID,
+        postings: list[NormalizedPosting],
+        *,
+        error: str | None = None,
+    ) -> tuple[int, int]:
+        """Upsert what was seen, expire what was not. Returns (upserted, expired)."""
+        async with self._db.shared() as session:
+            source = await session.get(CrawlSource, source_id)
+            if source is None:
+                raise NotFoundError("crawl source not found", source_id=str(source_id))
+            source.last_fetched_at = utcnow()
+            source.last_error = error
+            if error is not None:
+                return (0, 0)
+
+            seen_keys: set[str] = set()
+            for posting in postings:
+                company = await _ensure_company(session, posting.company_name)
+                await _upsert_posting(session, source_id, company.id, posting)
+                seen_keys.add(posting.canonical_key)
+
+            expired = await _expire_unseen(session, source_id, seen_keys)
+
+            await emit(
+                session,
+                EventName.POSTINGS_CHANGED,
+                {
+                    # Markets and companies only. The crawler must not work out
+                    # which users are affected — the dispatcher fans that out.
+                    "company_id": str(source.company_id) if source.company_id else None,
+                    "market": source.market,
+                    "seen": len(seen_keys),
+                    "expired": expired,
+                },
+            )
+            return (len(seen_keys), expired)
+
+    async def postings_needing_embeddings(self, model_name: str, limit: int = 200) -> list[
+        tuple[uuid.UUID, str]
+    ]:
+        async with self._db.shared() as session:
+            rows = await session.execute(
+                select(JobPosting.id, JobPosting.title, JobPosting.location, JobPosting.description)
+                .outerjoin(
+                    PostingEmbedding,
+                    (PostingEmbedding.job_posting_id == JobPosting.id)
+                    & (PostingEmbedding.model_name == model_name),
+                )
+                .where(PostingEmbedding.job_posting_id.is_(None))
+                .limit(limit)
+            )
+            return [
+                (row.id, "\n".join(p for p in (row.title, row.title, row.location, row.description) if p))
+                for row in rows.all()
+            ]
+
+    async def store_embeddings(
+        self, model_name: str, vectors: dict[uuid.UUID, list[float]]
+    ) -> None:
+        async with self._db.shared() as session:
+            for posting_id, vector in vectors.items():
+                session.add(
+                    PostingEmbedding(
+                        job_posting_id=posting_id, model_name=model_name, vector=vector
+                    )
+                )
+
+
+class MarketService:
+    """Subscriptions, market preferences and pasted JDs. Owner zone."""
+
+    def __init__(self, database: Database, *, manual_refresh_per_day: int) -> None:
+        self._db = database
+        self._manual_refresh_per_day = manual_refresh_per_day
+
+    async def subscriptions(self, owner_id: uuid.UUID) -> list[CompanySubscriptionView]:
+        async with self._db.for_user(owner_id) as session:
+            rows = await session.execute(
+                select(CompanySubscription).where(CompanySubscription.owner_id == owner_id)
+            )
+            return [_subscription_view(row) for row in rows.scalars()]
+
+    async def subscribe(self, owner_id: uuid.UUID, *, company_name: str) -> CompanySubscriptionView:
+        name = company_name.strip()
+        if not name:
+            raise ValidationError("a company name is required")
+
+        async with self._db.shared() as shared:
+            company = await _ensure_company(shared, name)
+            company_id, resolved_name = company.id, company.name
+
+        async with self._db.for_user(owner_id) as session:
+            existing = await session.execute(
+                select(CompanySubscription).where(
+                    CompanySubscription.owner_id == owner_id,
+                    CompanySubscription.company_id == company_id,
+                )
+            )
+            subscription = existing.scalar_one_or_none()
+            if subscription is None:
+                subscription = CompanySubscription(
+                    owner_id=owner_id,
+                    company_id=company_id,
+                    company_name=resolved_name,
+                    coverage=str(Coverage.MANUAL),
+                )
+                session.add(subscription)
+                await session.flush()
+                await emit(
+                    session,
+                    EventName.SUBSCRIPTION_ADDED,
+                    {"company_id": str(company_id), "company_name": resolved_name},
+                    owner_id=owner_id,
+                )
+            return _subscription_view(subscription)
+
+    async def set_coverage(
+        self, owner_id: uuid.UUID, company_id: uuid.UUID, coverage: Coverage
+    ) -> None:
+        async with self._db.for_user(owner_id) as session:
+            await session.execute(
+                update(CompanySubscription)
+                .where(
+                    CompanySubscription.owner_id == owner_id,
+                    CompanySubscription.company_id == company_id,
+                )
+                .values(coverage=str(coverage))
+            )
+
+    async def unsubscribe(self, owner_id: uuid.UUID, company_id: uuid.UUID) -> None:
+        async with self._db.for_user(owner_id) as session:
+            rows = await session.execute(
+                select(CompanySubscription).where(
+                    CompanySubscription.owner_id == owner_id,
+                    CompanySubscription.company_id == company_id,
+                )
+            )
+            subscription = rows.scalar_one_or_none()
+            if subscription is not None:
+                await session.delete(subscription)
+
+    async def markets(self, owner_id: uuid.UUID) -> list[str]:
+        async with self._db.for_user(owner_id) as session:
+            rows = await session.execute(
+                select(MarketPreference.market).where(MarketPreference.owner_id == owner_id)
+            )
+            return sorted(rows.scalars())
+
+    async def add_market(self, owner_id: uuid.UUID, market: str) -> list[str]:
+        value = market.strip()
+        if not value:
+            raise ValidationError("a market is required")
+        async with self._db.for_user(owner_id) as session:
+            existing = await session.execute(
+                select(MarketPreference).where(
+                    MarketPreference.owner_id == owner_id, MarketPreference.market == value
+                )
+            )
+            if existing.scalar_one_or_none() is None:
+                session.add(MarketPreference(owner_id=owner_id, market=value))
+                await emit(
+                    session, EventName.MARKET_SELECTED, {"market": value}, owner_id=owner_id
+                )
+        return await self.markets(owner_id)
+
+    async def remove_market(self, owner_id: uuid.UUID, market: str) -> list[str]:
+        async with self._db.for_user(owner_id) as session:
+            rows = await session.execute(
+                select(MarketPreference).where(
+                    MarketPreference.owner_id == owner_id, MarketPreference.market == market
+                )
+            )
+            preference = rows.scalar_one_or_none()
+            if preference is not None:
+                await session.delete(preference)
+        return await self.markets(owner_id)
+
+    async def paste_job_description(
+        self,
+        owner_id: uuid.UUID,
+        *,
+        company_name: str,
+        title: str,
+        location: str | None,
+        description: str,
+        url: str | None = None,
+    ) -> PostingView:
+        """Store a JD the user pasted. Private to them, always."""
+        if not description.strip():
+            raise ValidationError("a job description is required")
+        if not title.strip():
+            raise ValidationError("a job title is required")
+
+        key = canonical_key(company=company_name, title=title, location=location)
+
+        # A private copy may link to a matching crawled posting so the user gets
+        # weekly updates. Nothing flows back the other way.
+        async with self._db.shared() as shared:
+            match = await shared.execute(
+                select(JobPosting.id).where(JobPosting.canonical_key == key)
+            )
+            shared_posting_id = match.scalar_one_or_none()
+
+        async with self._db.for_user(owner_id) as session:
+            posting = PrivateJobPosting(
+                owner_id=owner_id,
+                canonical_key=key,
+                company_name=company_name.strip(),
+                title=title.strip(),
+                location=location,
+                description=description,
+                url=url,
+                shared_posting_id=shared_posting_id,
+            )
+            session.add(posting)
+            await session.flush()
+            return _private_posting_view(posting)
+
+    async def private_postings(self, owner_id: uuid.UUID) -> list[PostingView]:
+        async with self._db.for_user(owner_id) as session:
+            rows = await session.execute(
+                select(PrivateJobPosting).where(PrivateJobPosting.owner_id == owner_id)
+            )
+            return [_private_posting_view(row) for row in rows.scalars()]
+
+    async def postings_in_scope(self, owner_id: uuid.UUID) -> list[PostingView]:
+        """Every posting this user's role map is built from.
+
+        Shared postings in their markets or from a company they watch, plus
+        their own pasted JDs. Another user's private postings can never appear
+        here — they are in a schema this query does not touch.
+        """
+        markets = await self.markets(owner_id)
+        subscriptions = await self.subscriptions(owner_id)
+        company_ids = [s.company_id for s in subscriptions]
+
+        shared_rows: list[PostingView] = []
+        if markets or company_ids:
+            async with self._db.shared() as session:
+                query = (
+                    select(JobPosting, Company.name)
+                    .join(Company, JobPosting.company_id == Company.id)
+                    .where(JobPosting.status == str(PostingStatus.OPEN))
+                )
+                conditions = []
+                if company_ids:
+                    conditions.append(JobPosting.company_id.in_(company_ids))
+                if markets:
+                    conditions.append(JobPosting.location.in_(markets))
+                query = query.where(_any_of(conditions))
+                rows = await session.execute(query)
+                shared_rows = [
+                    _shared_posting_view(posting, company_name)
+                    for posting, company_name in rows.all()
+                ]
+
+        return shared_rows + await self.private_postings(owner_id)
+
+    async def request_manual_refresh(self, owner_id: uuid.UUID, company_id: uuid.UUID) -> None:
+        """Re-crawl one watched company now, within a per-day cap.
+
+        The weekly schedule stays the norm; this is for the moment right after
+        subscribing.
+        """
+        since = utcnow() - timedelta(days=1)
+        async with self._db.for_user(owner_id) as session:
+            used = await session.execute(
+                select(func.count())
+                .select_from(ManualRefreshLog)
+                .where(
+                    ManualRefreshLog.owner_id == owner_id,
+                    ManualRefreshLog.requested_at >= since,
+                )
+            )
+            if int(used.scalar_one()) >= self._manual_refresh_per_day:
+                raise RateLimitedError(
+                    "you have used today's manual refreshes; the weekly crawl still runs",
+                    limit=self._manual_refresh_per_day,
+                )
+            session.add(ManualRefreshLog(owner_id=owner_id, company_id=company_id))
+
+    async def salary_band(self, owner_id: uuid.UUID, posting_ids: list[uuid.UUID]) -> object:
+        async with self._db.shared() as session:
+            rows = await session.execute(
+                select(
+                    JobPosting.salary_min, JobPosting.salary_max, JobPosting.salary_currency
+                ).where(
+                    JobPosting.id.in_(posting_ids),
+                    JobPosting.salary_min.is_not(None),
+                    JobPosting.salary_currency.is_not(None),
+                )
+            )
+            return band_from([(r[0], r[1] or r[0], r[2]) for r in rows.all()])
+
+
+# --- helpers ---------------------------------------------------------------
+
+
+def _any_of(conditions: list[object]) -> object:
+    from sqlalchemy import or_
+
+    return or_(*conditions) if len(conditions) > 1 else conditions[0]
+
+
+async def _ensure_company(session: AsyncSession, name: str) -> Company:
+    normalized = normalize(name)
+    existing = await session.execute(
+        select(Company).where(Company.normalized_name == normalized)
+    )
+    company = existing.scalar_one_or_none()
+    if company is None:
+        company = Company(name=name.strip(), normalized_name=normalized)
+        session.add(company)
+        await session.flush()
+    return company
+
+
+async def _upsert_posting(
+    session: AsyncSession,
+    source_id: uuid.UUID,
+    company_id: uuid.UUID,
+    posting: NormalizedPosting,
+) -> None:
+    existing = await session.execute(
+        select(JobPosting).where(JobPosting.canonical_key == posting.canonical_key)
+    )
+    row = existing.scalar_one_or_none()
+    now = utcnow()
+    if row is None:
+        session.add(
+            JobPosting(
+                canonical_key=posting.canonical_key,
+                company_id=company_id,
+                crawl_source_id=source_id,
+                title=posting.title,
+                location=posting.location,
+                description=posting.description,
+                url=posting.url,
+                source_kind=str(posting.source_kind),
+                posted_on=posting.posted_on,
+                salary_min=posting.salary.min_amount if posting.salary else None,
+                salary_max=posting.salary.max_amount if posting.salary else None,
+                salary_currency=posting.salary.currency if posting.salary else None,
+                status=str(PostingStatus.OPEN),
+                first_seen_at=now,
+                last_seen_at=now,
+            )
+        )
+        return
+
+    row.last_seen_at = now
+    row.status = str(PostingStatus.OPEN)
+    row.title = posting.title
+    row.description = posting.description
+    row.url = posting.url
+    if posting.salary is not None:
+        row.salary_min = posting.salary.min_amount
+        row.salary_max = posting.salary.max_amount
+        row.salary_currency = posting.salary.currency
+
+
+async def _expire_unseen(
+    session: AsyncSession, source_id: uuid.UUID, seen_keys: set[str]
+) -> int:
+    """A posting missing from a crawl is marked expired, never deleted."""
+    query = (
+        update(JobPosting)
+        .where(
+            JobPosting.crawl_source_id == source_id,
+            JobPosting.status == str(PostingStatus.OPEN),
+        )
+        .values(status=str(PostingStatus.EXPIRED))
+    )
+    if seen_keys:
+        query = query.where(JobPosting.canonical_key.notin_(seen_keys))
+    result = await session.execute(query)
+    return int(result.rowcount or 0)
+
+
+def _subscription_view(row: CompanySubscription) -> CompanySubscriptionView:
+    return CompanySubscriptionView(
+        id=row.id,
+        company_id=row.company_id,
+        company_name=row.company_name,
+        coverage=Coverage(row.coverage),
+        last_refreshed_at=row.last_refreshed_at,
+    )
+
+
+def _shared_posting_view(posting: JobPosting, company_name: str) -> PostingView:
+    salary = (
+        SalaryRange(
+            min_amount=posting.salary_min,
+            max_amount=posting.salary_max or posting.salary_min,
+            currency=posting.salary_currency or "",
+        )
+        if posting.salary_min is not None
+        else None
+    )
+    return PostingView(
+        id=posting.id,
+        company_name=company_name,
+        title=posting.title,
+        location=posting.location,
+        url=posting.url,
+        description=posting.description,
+        visibility=Visibility.SHARED,
+        salary=salary,
+    )
+
+
+def _private_posting_view(posting: PrivateJobPosting) -> PostingView:
+    return PostingView(
+        id=posting.id,
+        company_name=posting.company_name,
+        title=posting.title,
+        location=posting.location,
+        url=posting.url,
+        description=posting.description,
+        visibility=Visibility.PRIVATE,
+        salary=None,
+    )

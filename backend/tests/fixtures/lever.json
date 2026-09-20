@@ -1,0 +1,13 @@
+[
+  {"id": "abc-123", "text": "Staff Platform Engineer",
+   "categories": {"location": "Remote EU", "team": "Infrastructure"},
+   "hostedUrl": "https://jobs.lever.co/meridian/abc-123",
+   "descriptionPlain": "Own multi-region reliability.",
+   "createdAt": 1756000000000,
+   "salaryRange": {"min": 110000, "max": 140000, "currency": "EUR"}},
+  {"id": "def-456", "text": "Developer Experience Lead",
+   "categories": {"location": "Berlin"},
+   "hostedUrl": "https://jobs.lever.co/meridian/def-456",
+   "description": "<p>Make the toolchain <b>good</b>.</p>",
+   "createdAt": 1756100000000}
+]
