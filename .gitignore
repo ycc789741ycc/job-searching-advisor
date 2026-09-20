@@ -1,0 +1,25 @@
+# Environment — never committed; .env.example is the committed template
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+web/dist/
+
+# Local data & artifacts
+.local/
+*.log
+.DS_Store
+
+# Models cached by sentence-transformers
+.cache/

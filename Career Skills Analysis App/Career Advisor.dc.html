@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/organic-4e78ff27-2574-4075-bd1f-fe0d99f770b5/styles.css">
+<script src="_ds/organic-4e78ff27-2574-4075-bd1f-fe0d99f770b5/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caprasimo&family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: var(--color-bg); }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  a { color: var(--color-accent-700); }
+  a:hover { color: var(--color-accent-800); }
+  [contenteditable]:hover { background: color-mix(in srgb, #c67139 10%, transparent); border-radius: 8px; }
+  [contenteditable]:focus { outline: 2px solid var(--color-accent); outline-offset: 3px; border-radius: 8px; }
+</style>
+</helmet>
+
+<sc-if value="{{ isLoggedOut }}" hint-placeholder-val="{{ true }}">
+  <div style="min-height: 100vh; background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); align-items: center; gap: 20px;">
+    <div style="padding: 56px 48px; max-width: 580px;">
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 36px;">
+        <div style="width: 32px; height: 32px; border-radius: 999px; background: var(--color-accent);"></div>
+        <div style="font-family: var(--font-heading); font-size: 20px;">Trajectory</div>
+      </div>
+      <h1 style="font-size: 44px; line-height: 1.08; margin: 0 0 16px;">Your next role, read from the work you already did.</h1>
+      <p style="font-size: 17px; line-height: 1.65; max-width: 46ch; color: var(--color-neutral-800);">Connect GitHub, Jira and LinkedIn. Trajectory reads what you actually shipped, scores it against real market bars, and rewrites your résumé one role at a time.</p>
+      <div style="display: grid; gap: 12px; max-width: 430px; margin-top: 30px;">
+        <button class="btn btn-primary btn-block" onClick="{{ loginGoogle }}" style="border-radius: 999px; padding: 14px 22px; font-size: 15px; gap: 10px;">
+          <span style="width: 22px; height: 22px; border-radius: 999px; background: var(--color-bg); color: var(--color-accent-700); display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px;">G</span>
+          Continue with Google
+        </button>
+        <div style="display: flex; align-items: center; gap: 12px; color: var(--color-neutral-700); font-size: 13px;">
+          <span style="height: 1px; flex: 1; background: var(--color-neutral-300);"></span>or use your email<span style="height: 1px; flex: 1; background: var(--color-neutral-300);"></span>
+        </div>
+        <input class="input" placeholder="you@work.com" value="{{ email }}" onChange="{{ setEmail }}" style="border-radius: 999px; padding: 12px 18px;">
+        <input class="input" type="password" placeholder="Password" style="border-radius: 999px; padding: 12px 18px;">
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <button class="btn btn-primary" onClick="{{ loginEmail }}" style="border-radius: 999px;">{{ authCta }}</button>
+          <button class="btn btn-ghost" onClick="{{ toggleAuthMode }}">{{ authSwitch }}</button>
+        </div>
+        <div style="font-size: 12.5px; color: var(--color-neutral-700); line-height: 1.5;">You bring your own AI provider and key after signing in — nothing is analyzed until you do.</div>
+      </div>
+    </div>
+    <div style="padding: 40px; display: flex; justify-content: center;">
+      <div style="width: 100%; max-width: 420px; background: var(--color-surface); border-radius: var(--radius-lg); padding: 26px; box-shadow: var(--shadow-md);">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+          <span class="tag tag-accent">Skill radar</span>
+          <span class="tag tag-accent-2">Salary bubbles</span>
+          <span class="tag tag-outline">Gap plan</span>
+        </div>
+        <sc-for list="{{ loginPitch }}" as="p" hint-placeholder-count="4">
+          <div style="display: flex; gap: 14px; padding: 13px 0; border-bottom: 1px solid color-mix(in srgb, #201e1d 10%, transparent);">
+            <div style="width: 34px; height: 34px; flex: 0 0 auto; border-radius: 999px; background: var(--color-accent-2-200); color: var(--color-accent-2-800); display: flex; align-items: center; justify-content: center; font-family: var(--font-heading); font-size: 14px;">{{ p.n }}</div>
+            <div>
+              <div style="font-weight: 700; font-size: 15px;">{{ p.title }}</div>
+              <div style="font-size: 13.5px; color: var(--color-neutral-800); line-height: 1.5;">{{ p.note }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isLoggedIn }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; align-items: stretch; min-height: 100vh; background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); font-size: 15px;">
+
+  <aside style="width: 246px; flex: 0 0 246px; background: var(--color-surface); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto;">
+    <div style="padding: 22px 22px 16px; display: flex; align-items: center; gap: 10px;">
+      <div style="width: 22px; height: 22px; border-radius: 999px; background: var(--color-accent);"></div>
+      <div style="font-family: var(--font-heading); font-size: 18px;">Trajectory</div>
+    </div>
+    <nav style="display: flex; flex-direction: column; padding: 6px 12px; gap: 3px; flex: 0 1 auto; overflow-y: auto;">
+      <sc-for list="{{ nav }}" as="item" hint-placeholder-count="8">
+        <button onClick="{{ item.go }}" style="all: unset; cursor: pointer; display: flex; align-items: center; gap: 11px; padding: 10px 14px; border-radius: 999px; font-size: 14px; background: {{ item.bg }}; color: {{ item.fg }};" style-hover="background: color-mix(in srgb, #c67139 14%, transparent);">
+          <span style="font-variant-numeric: tabular-nums; font-size: 11.5px; opacity: 0.5;">{{ item.num }}</span>
+          <span style="font-weight: {{ item.weight }};">{{ item.label }}</span>
+          <span style="margin-left: auto; padding: 0 6px; min-width: 19px; height: 19px; border-radius: 999px; background: {{ item.flagBg }}; color: var(--color-neutral-100); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center;">{{ item.flag }}</span>
+        </button>
+      </sc-for>
+    </nav>
+    <div style="margin-top: auto; padding: 0 12px 4px; flex: 0 0 auto;">
+      <div style="height: 1px; background: var(--color-neutral-300); margin: 0 10px 10px;"></div>
+      <div style="font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-neutral-700); padding: 0 14px 7px;">System configuration</div>
+      <button onClick="{{ goAi }}" style="all: unset; cursor: pointer; display: flex; align-items: center; gap: 11px; width: 100%; box-sizing: border-box; padding: 10px 14px; border-radius: 999px; background: {{ settingsBg }}; color: {{ settingsFg }};" style-hover="background: color-mix(in srgb, #c67139 14%, transparent);">
+        <span style="width: 20px; height: 20px; flex: 0 0 auto; border-radius: 999px; border: 2px solid currentColor; opacity: 0.55;"></span>
+        <span style="min-width: 0;">
+          <span style="display: block; font-size: 14px; font-weight: 600;">AI &amp; model</span>
+          <span style="display: block; font-size: 11.5px; color: var(--color-neutral-700); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ settingsNote }}</span>
+        </span>
+        <span style="margin-left: auto; padding: 0 6px; min-width: 19px; height: 19px; border-radius: 999px; background: {{ settingsFlagBg }}; color: var(--color-neutral-100); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center;">{{ settingsFlag }}</span>
+      </button>
+    </div>
+
+    <div style="padding: 14px 22px 20px; flex: 0 0 auto;">
+      <div style="font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-neutral-700); margin-bottom: 8px;">Profile confidence</div>
+      <div style="height: 10px; border-radius: 999px; background: var(--color-neutral-200); margin-bottom: 9px; overflow: hidden;">
+        <div style="height: 10px; border-radius: 999px; background: var(--color-accent); width: {{ confidencePct }};"></div>
+      </div>
+      <div style="font-family: var(--font-heading); font-size: 24px; line-height: 1;">{{ confidence }}%</div>
+      <div style="font-size: 12.5px; color: var(--color-neutral-800); margin-top: 5px; line-height: 1.45;">{{ confidenceNote }}</div>
+    </div>
+  </aside>
+
+  <main style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+    <header style="display: flex; align-items: flex-end; justify-content: space-between; gap: 22px; padding: 30px 34px 20px; flex-wrap: wrap;">
+      <div style="min-width: 0;">
+        <div style="font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent-700); font-weight: 700; margin-bottom: 7px;">{{ kicker }}</div>
+        <h1 style="font-size: 32px; margin: 0;">{{ title }}</h1>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; flex: 0 0 auto;">
+        <button onClick="{{ goAi }}" style="all: unset; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 999px; background: {{ aiChipBg }}; color: {{ aiChipFg }}; font-size: 13px; font-weight: 600;" style-hover="filter: brightness(0.97);">
+          <span style="width: 8px; height: 8px; border-radius: 999px; background: {{ aiDot }};"></span>{{ aiChip }}
+        </button>
+        <div style="padding: 9px 15px; border-radius: 999px; background: var(--color-accent-2-200); color: var(--color-accent-2-800); font-size: 13px; font-weight: 600;">{{ role.name }} · {{ role.fit }}%</div>
+        <div style="width: 38px; height: 38px; border-radius: 999px; background: var(--color-accent-700); color: var(--color-neutral-100); display: flex; align-items: center; justify-content: center; font-family: var(--font-heading); font-size: 14px;">{{ initials }}</div>
+      </div>
+    </header>
+
+    <section style="flex: 1; padding: 4px 34px 64px; animation: fadeUp 260ms ease-out;">
+
+      <sc-if value="{{ isConnect }}" hint-placeholder-val="{{ true }}">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 24px; align-items: start;">
+          <div>
+            <p style="max-width: 58ch; font-size: 16px; line-height: 1.65; color: var(--color-neutral-800);">Every connector runs on OAuth — you approve the scopes, we never hold a password, and you can revoke any of them right here.</p>
+            <div style="display: grid; gap: 14px; margin-top: 18px;">
+              <sc-for list="{{ sources }}" as="s" hint-placeholder-count="4">
+                <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 20px 22px;">
+                  <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;">
+                    <div style="display: flex; gap: 14px; align-items: center;">
+                      <div style="width: 42px; height: 42px; border-radius: 999px; background: {{ s.iconBg }}; color: {{ s.iconFg }}; display: flex; align-items: center; justify-content: center; font-family: var(--font-heading); font-size: 15px;">{{ s.glyph }}</div>
+                      <div>
+                        <div style="font-family: var(--font-heading); font-size: 19px;">{{ s.name }}</div>
+                        <div style="font-size: 13px; color: var(--color-neutral-800);">{{ s.kind }}</div>
+                      </div>
+                    </div>
+                    <span class="{{ s.tagClass }}">{{ s.status }}</span>
+                  </div>
+                  <div style="font-size: 13.5px; line-height: 1.55; margin: 13px 0; color: var(--color-neutral-800);">{{ s.detail }}</div>
+                  <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <sc-if value="{{ s.isSite }}" hint-placeholder-val="{{ false }}">
+                      <input class="input" style="border-radius: 999px; padding: 10px 16px; min-width: 190px;" placeholder="https://yoursite.dev" value="{{ siteUrl }}" onChange="{{ setSiteUrl }}">
+                    </sc-if>
+                    <button class="{{ s.btnClass }}" onClick="{{ s.toggle }}" style="border-radius: 999px;">{{ s.action }}</button>
+                    <span style="font-size: 12.5px; color: var(--color-neutral-700);">{{ s.account }}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 20px 22px; margin-top: 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+              <div>
+                <div style="font-family: var(--font-heading); font-size: 19px;">Existing résumé</div>
+                <div style="font-size: 13px; color: var(--color-neutral-800); margin-top: 3px;">{{ resumeFileNote }}</div>
+              </div>
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="btn btn-secondary" onClick="{{ uploadResume }}" style="border-radius: 999px;">Upload PDF / DOCX</button>
+                <button class="btn btn-primary" onClick="{{ runAnalysis }}" style="border-radius: 999px;">Analyze with AI</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="background: var(--color-accent-2-200); border-radius: var(--radius-lg); padding: 24px;">
+            <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--color-accent-2-800); margin-bottom: 6px;">What it found so far</div>
+            <sc-for list="{{ signals }}" as="sig" hint-placeholder-count="4">
+              <div style="display: flex; gap: 14px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid color-mix(in srgb, #201e1d 12%, transparent);">
+                <div style="font-family: var(--font-heading); font-size: 22px; min-width: 58px;">{{ sig.n }}</div>
+                <div>
+                  <div style="font-size: 14px; font-weight: 600;">{{ sig.label }}</div>
+                  <div style="font-size: 12.5px; color: var(--color-neutral-800);">{{ sig.src }}</div>
+                </div>
+              </div>
+            </sc-for>
+            <div style="font-size: 13.5px; line-height: 1.55; margin-top: 14px; color: var(--color-accent-2-900);">Authorize Jira and add your site to push confidence past 90% — the gaps right now are delivery scope and anything you built outside of work.</div>
+          </div>
+        </div>
+
+        <sc-if value="{{ consent }}" hint-placeholder-val="{{ false }}">
+          <div style="position: fixed; inset: 0; background: color-mix(in srgb, #201e1d 45%, transparent); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 20px;">
+            <div style="max-width: 470px; width: 100%; background: var(--color-neutral-100); border-radius: var(--radius-lg); padding: 28px; box-shadow: var(--shadow-lg);">
+              <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                <div style="width: 42px; height: 42px; border-radius: 999px; background: var(--color-accent-200); color: var(--color-accent-800); display: flex; align-items: center; justify-content: center; font-family: var(--font-heading);">{{ consent.glyph }}</div>
+                <div style="font-family: var(--font-heading); font-size: 22px;">Authorize {{ consent.name }}</div>
+              </div>
+              <div style="font-size: 14px; line-height: 1.6; color: var(--color-neutral-800);">Trajectory is requesting read-only access for {{ email }}:</div>
+              <div style="display: grid; gap: 9px; margin: 14px 0 20px;">
+                <sc-for list="{{ consent.scopes }}" as="sc" hint-placeholder-count="3">
+                  <div style="display: flex; gap: 10px; align-items: center; font-size: 13.5px;">
+                    <span style="width: 19px; height: 19px; flex: 0 0 auto; border-radius: 999px; background: var(--color-accent-2-500); color: var(--color-neutral-100); font-size: 11px; display: flex; align-items: center; justify-content: center;">✓</span>{{ sc }}
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-primary" onClick="{{ approveConsent }}" style="border-radius: 999px;">Authorize</button>
+                <button class="btn btn-ghost" onClick="{{ cancelConsent }}">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <sc-if value="{{ isClarify }}" hint-placeholder-val="{{ false }}">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 24px; align-items: start;">
+          <div>
+            <div style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 15px; border-radius: 999px; background: var(--color-accent-200); color: var(--color-accent-800); font-size: 12.5px; font-weight: 600;">Written by {{ modelName }} after reading your profile</div>
+            <p style="max-width: 56ch; font-size: 16px; line-height: 1.65; color: var(--color-neutral-800); margin-top: 14px;">Three things the data couldn't settle on its own. Answer what you can — each one sharpens the skill report and the salary band underneath it.</p>
+            <sc-for list="{{ questions }}" as="q" hint-placeholder-count="3">
+              <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 20px 22px; margin-top: 14px;">
+                <div style="display: flex; gap: 14px; align-items: baseline;">
+                  <span style="font-family: var(--font-heading); color: var(--color-accent-700); font-size: 14px;">{{ q.num }}</span>
+                  <div>
+                    <div style="font-family: var(--font-heading); font-size: 19px; line-height: 1.3;">{{ q.text }}</div>
+                    <div style="font-size: 13px; color: var(--color-neutral-800); margin-top: 6px;">Asked because: {{ q.why }}</div>
+                  </div>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px;">
+                  <sc-for list="{{ q.options }}" as="opt" hint-placeholder-count="3">
+                    <button onClick="{{ opt.pick }}" style="all: unset; cursor: pointer; padding: 9px 16px; border-radius: 999px; border: 1px solid {{ opt.border }}; background: {{ opt.bg }}; color: {{ opt.fg }}; font-size: 13.5px; font-weight: 600;" style-hover="border-color: var(--color-accent);">{{ opt.label }}</button>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+              <button class="btn btn-primary" onClick="{{ goStrengths }}" style="border-radius: 999px;">See my skill report</button>
+              <button class="btn btn-ghost" onClick="{{ goStrengths }}">Skip for now</button>
+            </div>
+          </div>
+          <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 24px;">
+            <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--color-neutral-700); margin-bottom: 4px;">Effect of your answers</div>
+            <sc-for list="{{ answerEffects }}" as="e" hint-placeholder-count="3">
+              <div style="padding: 13px 0; border-bottom: 1px solid color-mix(in srgb, #201e1d 10%, transparent);">
+                <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 14px; font-weight: 600;">
+                  <span>{{ e.dim }}</span>
+                  <span style="color: var(--color-accent-700);">{{ e.delta }}</span>
+                </div>
+                <div style="font-size: 12.5px; color: var(--color-neutral-800); margin-top: 4px;">{{ e.note }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isStrengths }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 18px; flex-wrap: wrap;">
+          <span style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--color-neutral-700);">Report layout</span>
+          <button onClick="{{ setLayoutA }}" style="all: unset; cursor: pointer; padding: 8px 16px; border-radius: 999px; border: 1px solid {{ layoutABorder }}; background: {{ layoutABg }}; color: {{ layoutAFg }}; font-size: 13px; font-weight: 600;">Radar &amp; evidence</button>
+          <button onClick="{{ setLayoutB }}" style="all: unset; cursor: pointer; padding: 8px 16px; border-radius: 999px; border: 1px solid {{ layoutBBorder }}; background: {{ layoutBBg }}; color: {{ layoutBFg }}; font-size: 13px; font-weight: 600;">Ranked ledger</button>
+          <span style="font-size: 13px; color: var(--color-neutral-800);">Compared against {{ role.name }}</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: {{ strengthCols }}; gap: 20px;">
+          <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 24px;">
+            <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 8px; flex-wrap: wrap;">
+              <h3 style="font-size: 21px; margin: 0;">Skill strength</h3>
+              <span style="display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px;"><span style="width: 14px; height: 4px; border-radius: 999px; background: var(--color-accent);"></span>You</span>
+              <span style="display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px;"><span style="width: 14px; height: 4px; border-radius: 999px; background: var(--color-accent-2-600);"></span>Role bar</span>
+            </div>
+            <div style="position: relative;">
+              <svg viewBox="0 0 420 410" style="width: 100%; height: auto; display: block;">
+                <sc-for list="{{ rings }}" as="ring" hint-placeholder-count="4">
+                  <polygon points="{{ ring.points }}" fill="none" stroke="color-mix(in srgb, #201e1d 14%, transparent)" stroke-width="1"></polygon>
+                </sc-for>
+                <sc-for list="{{ axes }}" as="ax" hint-placeholder-count="8">
+                  <line x1="210" y1="200" x2="{{ ax.x }}" y2="{{ ax.y }}" stroke="color-mix(in srgb, #201e1d 14%, transparent)" stroke-width="1"></line>
+                </sc-for>
+                <polygon points="{{ targetPoints }}" fill="none" stroke="var(--color-accent-2-600)" stroke-width="2.5" stroke-dasharray="7 5"></polygon>
+                <polygon points="{{ youPoints }}" fill="color-mix(in srgb, #c67139 24%, transparent)" stroke="var(--color-accent)" stroke-width="3"></polygon>
+                <sc-for list="{{ axes }}" as="ax" hint-placeholder-count="8">
+                  <circle cx="{{ ax.px }}" cy="{{ ax.py }}" r="{{ ax.dot }}" fill="var(--color-accent)"></circle>
+                </sc-for>
+              </svg>
+              <sc-for list="{{ axes }}" as="ax" hint-placeholder-count="8">
+                <div onClick="{{ ax.pick }}" style="position: absolute; cursor: pointer; white-space: nowrap; line-height: 1.3; text-align: center; left: {{ ax.leftPct }}; top: {{ ax.topPct }}; transform: translate(-50%, -50%);">
+                  <div style="font-size: 12.5px; font-weight: {{ ax.weight }}; color: {{ ax.color }};">{{ ax.short }}</div>
+                  <div style="font-size: 12.5px; font-weight: 700; color: var(--color-accent-700);">{{ ax.score }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="font-size: 12.5px; color: var(--color-neutral-800); margin-top: 8px;">Click a dimension to see the work it was scored from.</div>
+          </div>
+
+          <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 24px; display: flex; flex-direction: column;">
+            <sc-if value="{{ isLayoutA }}" hint-placeholder-val="{{ true }}">
+              <div>
+                <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--color-neutral-700);">Evidence · cited by {{ modelName }}</div>
+                <h3 style="font-size: 25px; margin: 10px 0 4px;">{{ skill.name }}</h3>
+                <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px;">
+                  <span style="font-family: var(--font-heading); font-size: 40px; line-height: 1; color: var(--color-accent-700);">{{ skill.score }}</span>
+                  <span style="font-size: 13px; color: var(--color-neutral-800);">vs {{ skill.target }} expected at {{ role.name }}</span>
+                </div>
+                <p style="font-size: 14.5px; line-height: 1.65;">{{ skill.read }}</p>
+                <sc-for list="{{ skill.evidence }}" as="ev" hint-placeholder-count="3">
+                  <div style="background: var(--color-bg); border-radius: var(--radius-md); padding: 13px 16px; margin-bottom: 10px;">
+                    <div style="font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; color: var(--color-accent-2-800);">{{ ev.src }}</div>
+                    <div style="font-size: 14px; line-height: 1.5; margin-top: 4px;">{{ ev.text }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ isLayoutB }}" hint-placeholder-val="{{ false }}">
+              <div>
+                <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--color-neutral-700); margin-bottom: 10px;">Every dimension, ranked by distance to the bar</div>
+                <sc-for list="{{ ledger }}" as="row" hint-placeholder-count="8">
+                  <div onClick="{{ row.pick }}" style="cursor: pointer; padding: 11px 12px; border-radius: var(--radius-md);" style-hover="background: var(--color-bg);">
+                    <div style="display: flex; justify-content: space-between; gap: 12px; align-items: baseline;">
+                      <span style="font-size: 14px; font-weight: {{ row.weight }};">{{ row.name }}</span>
+                      <span style="font-size: 12.5px; font-weight: 700; color: {{ row.deltaColor }};">{{ row.delta }}</span>
+                    </div>
+                    <div style="position: relative; height: 11px; border-radius: 999px; background: var(--color-neutral-200); margin-top: 7px;">
+                      <div style="position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; width: {{ row.youPct }}; background: var(--color-accent);"></div>
+                      <div style="position: absolute; top: -3px; bottom: -3px; width: 3px; border-radius: 999px; left: {{ row.targetPct }}; background: var(--color-accent-2-700);"></div>
+                    </div>
+                    <div style="font-size: 12.5px; color: var(--color-neutral-800); margin-top: 6px;">{{ row.oneLine }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <div style="margin-top: auto; padding-top: 18px; display: flex; gap: 10px; flex-wrap: wrap;">
+              <button class="btn btn-primary" onClick="{{ goRoles }}" style="border-radius: 999px;">Match me to roles</button>
+              <button class="btn btn-secondary" onClick="{{ goPlan }}" style="border-radius: 999px;">Close the gap</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isRoles }}" hint-placeholder-val="{{ false }}">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
+          <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 12px;">
+              <div>
+                <h3 style="font-size: 21px; margin: 0;">Role market map</h3>
+                <div style="font-size: 13px; color: var(--color-neutral-800);">Bubble size = fit. 1,240 postings, last 60 days.</div>
+              </div>
+              <div style="display: flex; gap: 7px; flex-wrap: wrap;">
+                <sc-for list="{{ marketFilters }}" as="f" hint-placeholder-count="3">
+                  <button onClick="{{ f.pick }}" style="all: unset; cursor: pointer; padding: 7px 14px; border-radius: 999px; border: 1px solid {{ f.border }}; background: {{ f.bg }}; color: {{ f.fg }}; font-size: 12.5px; font-weight: 600;">{{ f.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+            <div style="position: relative; padding-left: 104px; padding-bottom: 30px;">
+              <div style="position: relative;">
+                <svg viewBox="0 0 680 440" style="width: 100%; height: auto; display: block;">
+                  <sc-for list="{{ yTicks }}" as="t" hint-placeholder-count="4">
+                    <line x1="74" y1="{{ t.y }}" x2="660" y2="{{ t.y }}" stroke="color-mix(in srgb, #201e1d 12%, transparent)" stroke-width="1"></line>
+                  </sc-for>
+                  <line x1="74" y1="388" x2="660" y2="388" stroke="color-mix(in srgb, #201e1d 45%, transparent)" stroke-width="2"></line>
+                  <line x1="74" y1="20" x2="74" y2="388" stroke="color-mix(in srgb, #201e1d 45%, transparent)" stroke-width="2"></line>
+                  <sc-for list="{{ bubbles }}" as="b" hint-placeholder-count="6">
+                    <circle onClick="{{ b.pick }}" onMouseEnter="{{ b.enter }}" onMouseLeave="{{ b.leave }}" style="cursor: pointer;" cx="{{ b.cx }}" cy="{{ b.cy }}" r="{{ b.r }}" fill="{{ b.fill }}" stroke="{{ b.stroke }}" stroke-width="{{ b.sw }}"></circle>
+                  </sc-for>
+                </svg>
+                <sc-for list="{{ yTicks }}" as="t" hint-placeholder-count="4">
+                  <div style="position: absolute; right: 100%; margin-right: 8px; white-space: nowrap; font-size: 12.5px; color: var(--color-neutral-800); top: {{ t.topPct }}; transform: translateY(-50%);">{{ t.label }}</div>
+                </sc-for>
+                <sc-for list="{{ xTicks }}" as="t" hint-placeholder-count="4">
+                  <div style="position: absolute; top: 100%; margin-top: 4px; white-space: nowrap; font-size: 12.5px; color: var(--color-neutral-800); left: {{ t.leftPct }}; transform: translateX(-50%);">{{ t.label }}</div>
+                </sc-for>
+                <sc-for list="{{ bubbles }}" as="b" hint-placeholder-count="6">
+                  <div onClick="{{ b.pick }}" onMouseEnter="{{ b.enter }}" onMouseLeave="{{ b.leave }}" style="position: absolute; cursor: pointer; white-space: nowrap; font-size: 12.5px; font-weight: {{ b.weight }}; color: {{ b.labelColor }}; background: {{ b.labelBg }}; padding: 2px 9px; border-radius: 999px; left: {{ b.labelLeftPct }}; top: {{ b.labelTopPct }}; transform: translate(-50%, -50%);">{{ b.name }}</div>
+                </sc-for>
+              </div>
+              <div style="position: absolute; left: 0; bottom: 0; font-size: 11.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-700);">Hiring bar →</div>
+              <div style="position: absolute; left: 0; top: 0; transform-origin: 0 0; transform: rotate(90deg) translateX(6px); font-size: 11.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-700);">Median salary →</div>
+            </div>
+          </div>
+
+          <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 24px; display: flex; flex-direction: column;">
+            <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--color-neutral-700);">Selected role</div>
+            <h3 style="font-size: 27px; margin: 8px 0 6px;">{{ role.name }}</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin: 10px 0 16px;">
+              <div style="background: var(--color-bg); border-radius: var(--radius-md); padding: 12px 14px;">
+                <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-neutral-700);">Fit</div>
+                <div style="font-family: var(--font-heading); font-size: 23px;">{{ role.fit }}%</div>
+              </div>
+              <div style="background: var(--color-bg); border-radius: var(--radius-md); padding: 12px 14px;">
+                <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-neutral-700);">Band</div>
+                <div style="font-family: var(--font-heading); font-size: 23px;">{{ role.band }}</div>
+              </div>
+              <div style="background: var(--color-bg); border-radius: var(--radius-md); padding: 12px 14px;">
+                <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-neutral-700);">Openings</div>
+                <div style="font-family: var(--font-heading); font-size: 23px;">{{ role.openings }}</div>
+              </div>
+            </div>
+            <p style="font-size: 14.5px; line-height: 1.65;">{{ role.read }}</p>
+            <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--color-neutral-700); margin: 6px 0 6px;">Where you clear it / where you don't</div>
+            <sc-for list="{{ roleDeltas }}" as="d" hint-placeholder-count="5">
+              <div style="display: flex; align-items: center; gap: 11px; padding: 8px 0; border-bottom: 1px solid color-mix(in srgb, #201e1d 10%, transparent);">
+                <span style="width: 9px; height: 9px; border-radius: 999px; background: {{ d.color }}; flex: 0 0 auto;"></span>
+                <span style="font-size: 13.5px; flex: 1;">{{ d.name }}</span>
+                <span style="font-size: 12.5px; font-weight: 700; color: {{ d.color }};">{{ d.delta }}</span>
+              </div>
+            </sc-for>
+            <div style="display: flex; gap: 10px; margin-top: auto; padding-top: 18px; flex-wrap: wrap;">
+              <button class="btn btn-primary" onClick="{{ goPlan }}" style="border-radius: 999px;">Draft the plan with AI</button>
+              <button class="btn btn-secondary" onClick="{{ goResume }}" style="border-radius: 999px;">Tailor résumé</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isPlan }}" hint-placeholder-val="{{ false }}">
+        <div style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 15px; border-radius: 999px; background: var(--color-accent-200); color: var(--color-accent-800); font-size: 12.5px; font-weight: 600; margin-bottom: 16px;">Drafted by {{ modelName }} from your report · <span style="text-decoration: underline; cursor: pointer;" onClick="{{ regenPlan }}">regenerate</span></div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 20px;">
+          <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 24px;">
+            <h3 style="font-size: 21px; margin: 0 0 6px;">The four things between you and {{ role.name }}</h3>
+            <div style="font-size: 13px; color: var(--color-neutral-800); margin-bottom: 14px;">Ranked by how much each moves your fit score. Every line cites the work it was read from.</div>
+            <sc-for list="{{ gaps }}" as="g" hint-placeholder-count="4">
+              <div style="background: var(--color-bg); border-radius: var(--radius-md); padding: 16px 18px; margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; gap: 12px; align-items: baseline;">
+                  <div style="font-family: var(--font-heading); font-size: 17px;">{{ g.rank }} · {{ g.name }}</div>
+                  <div style="font-size: 12.5px; font-weight: 700; color: var(--color-accent-700); white-space: nowrap;">{{ g.lift }}</div>
+                </div>
+                <div style="position: relative; height: 11px; border-radius: 999px; background: var(--color-neutral-200); margin: 12px 0;">
+                  <div style="position: absolute; inset: 0 auto 0 0; border-radius: 999px; width: {{ g.youPct }}; background: var(--color-accent);"></div>
+                  <div style="position: absolute; top: -3px; bottom: -3px; width: 3px; border-radius: 999px; left: {{ g.targetPct }}; background: var(--color-accent-2-700);"></div>
+                </div>
+                <div style="font-size: 13.5px; line-height: 1.6;">{{ g.why }}</div>
+                <div style="font-size: 12.5px; color: var(--color-neutral-800); margin-top: 8px;">{{ g.evidence }}</div>
+              </div>
+            </sc-for>
+            <div style="background: var(--color-accent-2-200); border-radius: var(--radius-md); padding: 18px; margin-top: 16px;">
+              <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--color-accent-2-800); margin-bottom: 6px;">Stepping stones — if the jump is too far right now</div>
+              <sc-for list="{{ steppingStones }}" as="s" hint-placeholder-count="2">
+                <div style="display: flex; gap: 12px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid color-mix(in srgb, #201e1d 12%, transparent);">
+                  <div style="flex: 1;">
+                    <div style="font-size: 14px; font-weight: 700;">{{ s.name }}</div>
+                    <div style="font-size: 12.5px; color: var(--color-accent-2-900);">{{ s.note }}</div>
+                  </div>
+                  <div style="font-size: 13px; font-weight: 700; white-space: nowrap;">{{ s.fit }}% fit</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 6px;">
+              <h3 style="font-size: 21px; margin: 0;">Milestones &amp; tasks</h3>
+              <span style="font-size: 13px; font-weight: 700; color: var(--color-accent-700);">{{ planProgress }}% done</span>
+            </div>
+            <div style="height: 9px; border-radius: 999px; background: var(--color-neutral-200); margin-bottom: 18px; overflow: hidden;">
+              <div style="height: 9px; border-radius: 999px; background: var(--color-accent); width: {{ planProgressPct }};"></div>
+            </div>
+            <sc-for list="{{ milestones }}" as="m" hint-placeholder-count="3">
+              <div style="margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; gap: 10px; align-items: baseline;">
+                  <div style="font-family: var(--font-heading); font-size: 17px;">{{ m.title }}</div>
+                  <div style="font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-neutral-700); white-space: nowrap;">{{ m.window }}</div>
+                </div>
+                <div style="font-size: 12.5px; color: var(--color-neutral-800); margin: 4px 0 8px;">{{ m.outcome }}</div>
+                <sc-for list="{{ m.tasks }}" as="t" hint-placeholder-count="3">
+                  <div onClick="{{ t.toggle }}" style="display: flex; gap: 11px; align-items: flex-start; padding: 8px 10px; border-radius: var(--radius-md); cursor: pointer;" style-hover="background: var(--color-bg);">
+                    <span style="width: 17px; height: 17px; margin-top: 2px; flex: 0 0 auto; border-radius: 999px; border: 2px solid var(--color-accent); background: {{ t.box }};"></span>
+                    <span style="font-size: 13.5px; line-height: 1.5; text-decoration: {{ t.strike }}; opacity: {{ t.op }};">{{ t.text }}</span>
+                    <span style="margin-left: auto; font-size: 11.5px; color: var(--color-neutral-700); white-space: nowrap;">{{ t.due }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+            <div style="background: var(--color-bg); border-radius: var(--radius-md); padding: 18px;">
+              <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--color-neutral-700); margin-bottom: 4px;">Build one of these — it produces the evidence you're missing</div>
+              <sc-for list="{{ projects }}" as="p" hint-placeholder-count="3">
+                <div style="padding: 11px 0; border-bottom: 1px solid color-mix(in srgb, #201e1d 10%, transparent);">
+                  <div style="font-size: 14px; font-weight: 700;">{{ p.name }}</div>
+                  <div style="font-size: 12.5px; color: var(--color-neutral-800); line-height: 1.5;">{{ p.note }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isJobs }}" hint-placeholder-val="{{ false }}">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 24px; align-items: start;">
+          <div>
+            <div style="display: flex; gap: 7px; margin-bottom: 14px; flex-wrap: wrap;">
+              <sc-for list="{{ jobFilters }}" as="f" hint-placeholder-count="5">
+                <button onClick="{{ f.pick }}" style="all: unset; cursor: pointer; padding: 7px 14px; border-radius: 999px; border: 1px solid {{ f.border }}; background: {{ f.bg }}; color: {{ f.fg }}; font-size: 12.5px; font-weight: 600;">{{ f.label }}</button>
+              </sc-for>
+            </div>
+            <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 10px 18px 18px;">
+              <table class="table" style="width: 100%;">
+                <thead>
+                  <tr>
+                    <th style="text-align: left;">Role</th>
+                    <th style="text-align: left;">Company</th>
+                    <th style="text-align: left;">Comp</th>
+                    <th style="text-align: left;">Fit</th>
+                    <th style="text-align: left;">Source</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <sc-for list="{{ jobs }}" as="j" hint-placeholder-count="6">
+                    <tr>
+                      <td style="font-weight: 700;">{{ j.role }}</td>
+                      <td>{{ j.company }}</td>
+                      <td style="white-space: nowrap;">{{ j.comp }}</td>
+                      <td><span style="display: inline-block; padding: 3px 10px; border-radius: 999px; font-weight: 700; font-size: 12px; color: var(--color-neutral-100); background: {{ j.fitColor }};">{{ j.fit }}%</span></td>
+                      <td style="font-size: 12.5px; color: var(--color-neutral-800);">{{ j.source }}</td>
+                      <td style="text-align: right;"><button class="btn btn-ghost" onClick="{{ j.tailor }}">Tailor →</button></td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="display: grid; gap: 18px;">
+            <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 22px;">
+              <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--color-neutral-700); margin-bottom: 4px;">Company watchlist</div>
+              <sc-for list="{{ subs }}" as="s" hint-placeholder-count="4">
+                <div onClick="{{ s.toggle }}" style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: var(--radius-md); cursor: pointer;" style-hover="background: var(--color-bg);">
+                  <span style="width: 17px; height: 17px; flex: 0 0 auto; border-radius: 999px; border: 2px solid var(--color-accent); background: {{ s.box }};"></span>
+                  <span style="font-size: 14px; font-weight: 600;">{{ s.name }}</span>
+                  <span style="margin-left: auto; font-size: 12.5px; color: var(--color-neutral-700);">{{ s.note }}</span>
+                </div>
+              </sc-for>
+              <div style="font-size: 12.5px; color: var(--color-neutral-800); margin-top: 10px; line-height: 1.55;">{{ subsNote }}</div>
+            </div>
+
+            <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 22px;">
+              <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--color-neutral-700); margin-bottom: 10px;">Paste a job description</div>
+              <textarea class="input" rows="5" placeholder="Paste the JD here — {{ modelName }} scores it against your profile and marks which bullets to lead with." value="{{ jdText }}" onChange="{{ setJd }}" style="width: 100%; resize: vertical; border-radius: var(--radius-md); font-family: var(--font-body); font-size: 13.5px;"></textarea>
+              <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+                <button class="btn btn-primary" onClick="{{ scoreJd }}" style="border-radius: 999px;">Score with AI</button>
+                <button class="btn btn-ghost" onClick="{{ sampleJd }}">Use a sample</button>
+              </div>
+              <sc-if value="{{ jdScored }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top: 16px;">
+                  <div style="display: flex; align-items: baseline; gap: 10px;">
+                    <span style="font-family: var(--font-heading); font-size: 34px; color: var(--color-accent-700); line-height: 1;">{{ jdFit }}%</span>
+                    <span style="font-size: 13px; color: var(--color-neutral-800);">match — {{ jdVerdict }}</span>
+                  </div>
+                  <sc-for list="{{ jdPoints }}" as="p" hint-placeholder-count="3">
+                    <div style="font-size: 13.5px; line-height: 1.55; padding: 11px 14px; border-radius: var(--radius-md); background: {{ p.bg }}; margin-top: 9px;">{{ p.text }}</div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isResume }}" hint-placeholder-val="{{ false }}">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; align-items: start;">
+          <div style="display: grid; gap: 18px;">
+            <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 22px;">
+              <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--color-neutral-700); margin-bottom: 12px;">Saved résumés</div>
+              <sc-for list="{{ saved }}" as="sv" hint-placeholder-count="2">
+                <div style="display: flex; gap: 10px; align-items: center; padding: 10px; border-radius: var(--radius-md); background: {{ sv.bg }};">
+                  <div style="flex: 1; min-width: 0;">
+                    <div style="font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ sv.name }}</div>
+                    <div style="font-size: 12px; color: var(--color-neutral-700);">{{ sv.when }}</div>
+                  </div>
+                  <button class="btn btn-ghost" onClick="{{ sv.load }}">Open</button>
+                </div>
+              </sc-for>
+              <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
+                <button class="btn btn-secondary" onClick="{{ saveResume }}" style="border-radius: 999px;">Save this version</button>
+              </div>
+            </div>
+
+            <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 22px;">
+              <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--color-neutral-700); margin-bottom: 12px;">Template</div>
+              <div style="display: grid; gap: 10px;">
+                <sc-for list="{{ templates }}" as="t" hint-placeholder-count="3">
+                  <button onClick="{{ t.pick }}" style="all: unset; cursor: pointer; display: flex; gap: 12px; align-items: center; padding: 10px; border-radius: var(--radius-md); border: 1px solid {{ t.border }}; background: {{ t.bg }};" style-hover="border-color: var(--color-accent);">
+                    <span style="width: 34px; height: 44px; flex: 0 0 auto; border-radius: 6px; background: #ffffff; display: block; padding: 5px; box-shadow: var(--shadow-sm);">
+                      <span style="display: block; height: 5px; border-radius: 999px; background: {{ t.swatch }}; margin-bottom: 4px;"></span>
+                      <span style="display: block; height: 2px; background: var(--color-neutral-300); margin-bottom: 3px;"></span>
+                      <span style="display: block; height: 2px; background: var(--color-neutral-300); margin-bottom: 3px;"></span>
+                      <span style="display: block; height: 2px; background: var(--color-neutral-300); width: 70%;"></span>
+                    </span>
+                    <span>
+                      <span style="display: block; font-family: var(--font-heading); font-size: 15px;">{{ t.name }}</span>
+                      <span style="display: block; font-size: 12.5px; color: var(--color-neutral-800);">{{ t.note }}</span>
+                    </span>
+                  </button>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 22px;">
+              <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--color-neutral-700); margin-bottom: 12px;">Tailor to</div>
+              <div style="display: grid; gap: 12px;">
+                <label style="display: block;">
+                  <span style="display: block; font-size: 12.5px; color: var(--color-neutral-800); margin-bottom: 5px;">Role</span>
+                  <select class="input" value="{{ roleId }}" onChange="{{ setRole }}" style="width: 100%; border-radius: 999px; padding: 10px 16px;">
+                    <sc-for list="{{ roles }}" as="r" hint-placeholder-count="6">
+                      <option value="{{ r.id }}">{{ r.name }}</option>
+                    </sc-for>
+                  </select>
+                </label>
+                <label style="display: block;">
+                  <span style="display: block; font-size: 12.5px; color: var(--color-neutral-800); margin-bottom: 5px;">Company</span>
+                  <input class="input" style="width: 100%; border-radius: 999px; padding: 10px 16px;" value="{{ company }}" onChange="{{ setCompany }}" placeholder="e.g. Meridian Labs">
+                </label>
+                <sc-for list="{{ toggles }}" as="tg" hint-placeholder-count="3">
+                  <div onClick="{{ tg.toggle }}" style="display: flex; gap: 11px; align-items: flex-start; cursor: pointer; padding: 4px 0;">
+                    <span style="width: 17px; height: 17px; margin-top: 2px; flex: 0 0 auto; border-radius: 999px; border: 2px solid var(--color-accent); background: {{ tg.box }};"></span>
+                    <span style="font-size: 13.5px; line-height: 1.45;">{{ tg.label }}</span>
+                  </div>
+                </sc-for>
+                <button class="btn btn-primary btn-block" onClick="{{ exportResume }}" style="border-radius: 999px;">Export as PDF</button>
+                <div style="font-size: 12.5px; color: var(--color-neutral-800); line-height: 1.5;">{{ exportNote }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="background: #ffffff; color: #201e1d; border-radius: var(--radius-lg); padding: 44px 46px; box-shadow: var(--shadow-md); min-height: 640px;">
+            <div style="border-bottom: {{ tpl.rule }}; padding-bottom: 14px; margin-bottom: 20px;">
+              <div contentEditable="true" suppressContentEditableWarning="{{ true }}" onBlur="{{ editName }}" style="font-family: var(--font-heading); font-size: 30px; line-height: 1.1; color: {{ tpl.nameColor }};">{{ resumeName }}</div>
+              <div style="font-size: 13.5px; margin-top: 6px; color: #5a5550;">{{ headline }} · Berlin · {{ email }} · github.com/mayalc</div>
+            </div>
+            <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 800; margin-bottom: 6px; color: {{ tpl.nameColor }};">Summary</div>
+            <p contentEditable="true" suppressContentEditableWarning="{{ true }}" onBlur="{{ editSummary }}" style="font-size: 14px; line-height: 1.65; margin-bottom: 22px;">{{ summary }}</p>
+            <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 800; margin-bottom: 10px; color: {{ tpl.nameColor }};">Experience</div>
+            <sc-for list="{{ resumeJobs }}" as="rj" hint-placeholder-count="2">
+              <div style="margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; gap: 12px; align-items: baseline;">
+                  <div style="font-family: var(--font-heading); font-size: 16px;">{{ rj.title }} — {{ rj.org }}</div>
+                  <div style="font-size: 12.5px; color: #6b6560; white-space: nowrap;">{{ rj.when }}</div>
+                </div>
+                <sc-for list="{{ rj.bullets }}" as="b" hint-placeholder-count="3">
+                  <div style="display: flex; gap: 10px; margin-top: 8px;">
+                    <span style="width: 6px; height: 6px; margin-top: 8px; flex: 0 0 auto; border-radius: 999px; background: {{ b.dot }};"></span>
+                    <span contentEditable="true" suppressContentEditableWarning="{{ true }}" onBlur="{{ b.edit }}" style="font-size: 13.5px; line-height: 1.6; background: {{ b.hl }};">{{ b.text }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+            <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 800; margin-bottom: 10px; color: {{ tpl.nameColor }};">Skills, ordered for this role</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              <sc-for list="{{ resumeSkills }}" as="rs" hint-placeholder-count="8">
+                <span style="font-size: 12.5px; padding: 5px 12px; border-radius: 999px; background: {{ rs.bg }}; color: {{ rs.fg }};">{{ rs.name }}</span>
+              </sc-for>
+            </div>
+            <div style="font-size: 12px; color: #8a847e; margin-top: 26px;">Click any line to edit it directly. Changes are kept when you save a version.</div>
+          </div>
+
+          <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 22px; display: flex; flex-direction: column; min-height: 520px;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+              <div style="width: 30px; height: 30px; border-radius: 999px; background: var(--color-accent-200); color: var(--color-accent-800); display: flex; align-items: center; justify-content: center; font-family: var(--font-heading); font-size: 13px;">AI</div>
+              <div>
+                <div style="font-size: 14.5px; font-weight: 700;">Revise with {{ modelName }}</div>
+                <div style="font-size: 12px; color: var(--color-neutral-700);">Edits apply to the page on the left</div>
+              </div>
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; overflow: auto; padding: 4px 0;">
+              <sc-for list="{{ chat }}" as="m" hint-placeholder-count="3">
+                <div style="align-self: {{ m.align }}; max-width: 88%; background: {{ m.bg }}; color: {{ m.fg }}; border-radius: var(--radius-md); padding: 11px 14px; font-size: 13.5px; line-height: 1.55;">{{ m.text }}</div>
+              </sc-for>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0;">
+              <sc-for list="{{ chatSuggestions }}" as="sg" hint-placeholder-count="3">
+                <button onClick="{{ sg.send }}" style="all: unset; cursor: pointer; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--color-neutral-300); font-size: 12.5px;" style-hover="border-color: var(--color-accent); color: var(--color-accent-800);">{{ sg.label }}</button>
+              </sc-for>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <input class="input" style="flex: 1; border-radius: 999px; padding: 11px 16px;" placeholder="Ask for a change…" value="{{ chatDraft }}" onChange="{{ setChatDraft }}" onKeyDown="{{ chatKey }}">
+              <button class="btn btn-primary" onClick="{{ sendChat }}" style="border-radius: 999px;">Send</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isAi }}" hint-placeholder-val="{{ false }}">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 24px; align-items: start;">
+          <div style="background: var(--color-surface); border-radius: var(--radius-lg); padding: 24px;">
+            <h3 style="font-size: 21px; margin: 0 0 6px;">Your model, your key</h3>
+            <p style="font-size: 14px; line-height: 1.65; color: var(--color-neutral-800);">Trajectory never ships a model of its own. Point it at a provider you already pay for — the key stays in your browser and every analysis call is made from here.</p>
+            <div style="display: grid; gap: 14px; margin-top: 16px;">
+              <div>
+                <div style="font-size: 12.5px; color: var(--color-neutral-800); margin-bottom: 7px;">Provider</div>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  <sc-for list="{{ providers }}" as="p" hint-placeholder-count="4">
+                    <button onClick="{{ p.pick }}" style="all: unset; cursor: pointer; padding: 9px 16px; border-radius: 999px; border: 1px solid {{ p.border }}; background: {{ p.bg }}; color: {{ p.fg }}; font-size: 13.5px; font-weight: 600;">{{ p.label }}</button>
+                  </sc-for>
+                </div>
+              </div>
+              <label style="display: block;">
+                <span style="display: block; font-size: 12.5px; color: var(--color-neutral-800); margin-bottom: 5px;">Model</span>
+                <select class="input" value="{{ model }}" onChange="{{ setModel }}" style="width: 100%; border-radius: 999px; padding: 10px 16px;">
+                  <sc-for list="{{ models }}" as="m" hint-placeholder-count="3">
+                    <option value="{{ m.id }}">{{ m.id }}</option>
+                  </sc-for>
+                </select>
+              </label>
+              <label style="display: block;">
+                <span style="display: block; font-size: 12.5px; color: var(--color-neutral-800); margin-bottom: 5px;">API key</span>
+                <input class="input" type="password" style="width: 100%; border-radius: 999px; padding: 10px 16px;" placeholder="sk-…" value="{{ apiKey }}" onChange="{{ setApiKey }}">
+              </label>
+              <label style="display: block;">
+                <span style="display: block; font-size: 12.5px; color: var(--color-neutral-800); margin-bottom: 5px;">Base URL (optional — for a local or proxied model)</span>
+                <input class="input" style="width: 100%; border-radius: 999px; padding: 10px 16px;" placeholder="http://localhost:11434/v1" value="{{ baseUrl }}" onChange="{{ setBaseUrl }}">
+              </label>
+              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <button class="btn btn-primary" onClick="{{ testKey }}" style="border-radius: 999px;">Test &amp; save</button>
+                <span style="font-size: 13px; color: {{ testColor }}; font-weight: 600;">{{ testStatus }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="background: var(--color-accent-2-200); border-radius: var(--radius-lg); padding: 24px;">
+            <div style="font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--color-accent-2-800); margin-bottom: 6px;">Where this model is used</div>
+            <sc-for list="{{ aiUses }}" as="u" hint-placeholder-count="4">
+              <div style="padding: 13px 0; border-bottom: 1px solid color-mix(in srgb, #201e1d 12%, transparent);">
+                <div style="font-size: 14.5px; font-weight: 700;">{{ u.title }}</div>
+                <div style="font-size: 13px; color: var(--color-accent-2-900); line-height: 1.55; margin-top: 3px;">{{ u.note }}</div>
+              </div>
+            </sc-for>
+            <div style="font-size: 12.5px; color: var(--color-accent-2-900); line-height: 1.55; margin-top: 14px;">Without a key, Trajectory still charts what the connectors return — but no follow-up questions, gap plan or résumé revision is generated.</div>
+          </div>
+        </div>
+      </sc-if>
+
+    </section>
+  </main>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position: fixed; right: 26px; bottom: 26px; background: var(--color-neutral-900); color: var(--color-neutral-100); padding: 14px 20px; border-radius: 999px; box-shadow: var(--shadow-lg); font-size: 13.5px; font-weight: 600; max-width: 360px; animation: fadeUp 200ms ease-out; z-index: 50;">{{ toast }}</div>
+  </sc-if>
+</div>
+</sc-if>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;defaultLayout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;A&quot;,&quot;B&quot;],&quot;default&quot;:&quot;A&quot;,&quot;tsType&quot;:&quot;'A' | 'B'&quot;,&quot;section&quot;:&quot;Report&quot;},&quot;candidateName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Maya Lin Chen&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Résumé&quot;}}">
+const SKILLS = [
+  { id: 'dist', name: 'Distributed Systems', short: 'Distributed', score: 74,
+    read: "Strong on the operational half — you have run real failover. Thinner on design-from-scratch: most systems you touched already existed.",
+    evidence: [
+      { src: 'GitHub · payments-svc', text: '38 merged PRs on the idempotency + retry layer, including the 2024 outage fix.' },
+      { src: 'Jira · PAY-412 epic', text: 'Owned the regional failover runbook; 9 of 14 tickets carried your name.' },
+      { src: 'LinkedIn', text: 'Two years listed under a team described as "payments reliability".' }
+    ] },
+  { id: 'api', name: 'API & Service Design', short: 'API design', score: 81,
+    read: "Your strongest signal. Reviewers repeatedly defer to your interface calls, and your RFCs get merged with few changes.",
+    evidence: [
+      { src: 'GitHub · 6 repos', text: 'Author of 4 accepted RFCs; the v3 ledger API is yours end to end.' },
+      { src: 'GitHub reviews', text: '210 reviews given, 61% of them on schema or contract files.' }
+    ] },
+  { id: 'quality', name: 'Code Quality', short: 'Code quality', score: 68,
+    read: "Clean, consistent work — but almost entirely inside one service. Breadth is what is missing, not care.",
+    evidence: [
+      { src: 'GitHub', text: 'Median PR size 180 lines, revert rate 1.2% — well under team median.' },
+      { src: 'Jira', text: 'Only 3 tickets tagged refactor in 18 months.' }
+    ] },
+  { id: 'rel', name: 'Testing & Reliability', short: 'Reliability', score: 55,
+    read: "The clearest soft spot. You fix incidents well; there is little evidence you prevented them structurally.",
+    evidence: [
+      { src: 'GitHub', text: 'Test files touched in 34% of PRs against a senior-bar benchmark of ~60%.' },
+      { src: 'Jira · INC board', text: '11 incidents responded to, 1 postmortem authored.' }
+    ] },
+  { id: 'vel', name: 'Delivery Velocity', short: 'Velocity', score: 86,
+    read: "Consistently ships. Cycle time is top-quartile and you close what you start.",
+    evidence: [
+      { src: 'Jira', text: 'Median cycle time 2.4 days across 218 closed tickets.' },
+      { src: 'GitHub', text: '94% of opened PRs merged; almost nothing abandoned.' }
+    ] },
+  { id: 'lead', name: 'Technical Leadership', short: 'Tech lead', score: 49,
+    read: "The gating dimension for every senior-plus role on your map. You influence code; you have not yet visibly owned a cross-team outcome.",
+    evidence: [
+      { src: 'Jira', text: 'No epic where you were listed as the reporter across 3+ teams.' },
+      { src: 'Personal site', text: 'One conference talk — good signal, but a single data point.' }
+    ] },
+  { id: 'prod', name: 'Product Sense', short: 'Product', score: 63,
+    read: "You argue about user impact in review threads, which is rarer than it sounds. It is just not attached to any outcome metric yet.",
+    evidence: [
+      { src: 'GitHub review threads', text: '27 comments citing user-facing consequences over implementation detail.' },
+      { src: 'Jira', text: 'Two tickets you rewrote from the customer complaint upward.' }
+    ] },
+  { id: 'comm', name: 'Mentoring & Comms', short: 'Mentoring', score: 58,
+    read: "Written communication is genuinely good. The gap is volume — few people can point to you as the reason they got better.",
+    evidence: [
+      { src: 'GitHub', text: '38 review comments that explain rather than instruct — strong ratio.' },
+      { src: 'Personal site', text: '4 engineering posts, ~1,100 words each.' }
+    ] }
+];
+
+const ROLES = [
+  { id: 'srbe', name: 'Senior Backend Engineer', fit: 92, bar: 62, salary: 185, band: '$168–205k', openings: 412,
+    profile: { dist: 80, api: 82, quality: 76, rel: 72, vel: 84, lead: 62, prod: 60, comm: 62 },
+    read: 'Your natural next step. You already clear seven of eight dimensions; reliability is the only line a panel would push on, and it is coachable inside one quarter.' },
+  { id: 'staff', name: 'Staff Platform Engineer', fit: 61, bar: 88, salary: 245, band: '$225–268k', openings: 96,
+    profile: { dist: 92, api: 88, quality: 85, rel: 88, vel: 78, lead: 88, prod: 70, comm: 80 },
+    read: 'The money is real and so is the distance. Staff panels test for org-level influence, and your record is deep in one service rather than wide across several.' },
+  { id: 'em', name: 'Engineering Manager', fit: 44, bar: 79, salary: 228, band: '$210–248k', openings: 138,
+    profile: { dist: 62, api: 60, quality: 55, rel: 60, vel: 74, lead: 92, prod: 80, comm: 94 },
+    read: 'A different job, not a promotion. Worth revisiting only if mentoring is the part of the week you actually look forward to.' },
+  { id: 'fs', name: 'Senior Full-Stack', fit: 78, bar: 58, salary: 172, band: '$155–190k', openings: 508,
+    profile: { dist: 68, api: 80, quality: 78, rel: 66, vel: 86, lead: 58, prod: 74, comm: 58 },
+    read: 'Easiest offer to land and the widest market — at the cost of roughly $13k against the backend band and a thinner systems story later.' },
+  { id: 'dx', name: 'Developer Experience Lead', fit: 69, bar: 71, salary: 198, band: '$182–216k', openings: 74,
+    profile: { dist: 76, api: 84, quality: 88, rel: 80, vel: 74, lead: 78, prod: 76, comm: 80 },
+    read: 'An underrated fit: your review habits and RFC record are exactly the artefacts these teams hire on. Reliability and mentoring volume are the two lifts.' },
+  { id: 'arch', name: 'Solutions Architect', fit: 53, bar: 66, salary: 205, band: '$188–224k', openings: 121,
+    profile: { dist: 88, api: 86, quality: 60, rel: 58, vel: 60, lead: 72, prod: 86, comm: 84 },
+    read: 'Pays well and leans on your design strength, but it is a customer-facing job — far more of the week is spent presenting than building.' }
+];
+
+const SOURCES = [
+  { id: 'github', name: 'GitHub', kind: 'OAuth · code & review history', glyph: 'GH', account: 'mayalc · 3 orgs',
+    detail: 'Commits, reviews and RFCs across every org you belong to.',
+    scopes: ['Read repository metadata and commit history', 'Read pull requests and review comments', 'Read your public profile'] },
+  { id: 'jira', name: 'Jira', kind: 'OAuth · delivery & scope', glyph: 'JR', account: 'kestrel.atlassian.net',
+    detail: 'Cycle time, epic ownership and incident response — the scope evidence a résumé usually loses.',
+    scopes: ['Read issues and epics you are assigned to', 'Read sprint and board history', 'Read your Atlassian profile'] },
+  { id: 'linkedin', name: 'LinkedIn', kind: 'OAuth · titles & trajectory', glyph: 'LI', account: 'in/mayalinchen',
+    detail: 'Roles, tenure and the shape of your career so far.',
+    scopes: ['Read your basic profile', 'Read positions and tenure', 'Read skills and endorsements'] },
+  { id: 'site', name: 'Personal website', kind: 'URL · writing & talks', glyph: 'WW', account: 'Crawled nightly',
+    detail: 'Posts, talks and side projects — the only place your non-work signal lives.', scopes: [] }
+];
+
+const QUESTIONS = [
+  { id: 'q1', num: 'Q1', text: 'The 2024 failover work — did you design it or execute it?',
+    why: '38 GitHub PRs but no design doc found. This swings Distributed Systems by up to 11 points.',
+    options: ['I designed it', 'I executed someone else\u2019s design', 'Both, jointly'] },
+  { id: 'q2', num: 'Q2', text: 'How many engineers have you formally mentored?',
+    why: 'Review comments read like mentoring, but Jira and LinkedIn show no reports or mentees.',
+    options: ['None yet', '1–2 informally', '3+ formally'] },
+  { id: 'q3', num: 'Q3', text: 'Would you take a role where most of your week is other people\u2019s work?',
+    why: 'Decides whether manager-track roles stay on your market map at all.',
+    options: ['No, I want to build', 'Open to it', 'That\u2019s the goal'] }
+];
+
+const MILESTONES = [
+  { id: 'm1', title: 'Own one cross-team outcome', window: 'Weeks 1–6', outcome: 'Gives you the leadership artefact every senior-plus panel asks for.',
+    tasks: [
+      { id: 't1', text: 'Volunteer as tech lead on the checkout migration epic', due: 'Wk 1' },
+      { id: 't2', text: 'Write the design doc yourself; get two teams to review it', due: 'Wk 3' },
+      { id: 't3', text: 'Run the launch retro and publish it internally', due: 'Wk 6' }
+    ] },
+  { id: 'm2', title: 'Turn reliability from reactive to structural', window: 'Weeks 4–12', outcome: 'Closes your widest single gap against the role bar.',
+    tasks: [
+      { id: 't4', text: 'Author the postmortem for the next incident you touch', due: 'Wk 5' },
+      { id: 't5', text: 'Add contract tests to the ledger API — target 60% PR test coverage', due: 'Wk 9' },
+      { id: 't6', text: 'Propose and own one SLO for payments-svc', due: 'Wk 12' }
+    ] },
+  { id: 'm3', title: 'Make the work visible outside your team', window: 'Weeks 8–16', outcome: 'Recruiters and panels can only score what they can find.',
+    tasks: [
+      { id: 't7', text: 'Publish the failover design as a public write-up', due: 'Wk 10' },
+      { id: 't8', text: 'Mentor one junior engineer on a named, dated agreement', due: 'Wk 11' },
+      { id: 't9', text: 'Submit the talk to one platform-engineering conference', due: 'Wk 16' }
+    ] }
+];
+
+const PROJECTS = [
+  { name: 'A multi-region job runner, built in public', note: 'Produces the from-scratch distributed-design evidence your GitHub history is missing.' },
+  { name: 'Open-source contract-testing harness', note: 'Reliability signal that is visible without an employer vouching for it.' },
+  { name: 'Teardown series: three payment APIs', note: 'Converts your review instincts into public technical-judgment evidence.' }
+];
+
+const JOBS = [
+  { role: 'Senior Backend Engineer', company: 'Northwind Pay', comp: '$178–196k', fit: 93, source: 'LinkedIn' },
+  { role: 'Backend Engineer II', company: 'Cartography', comp: '$165–182k', fit: 88, source: 'Indeed' },
+  { role: 'Developer Experience Lead', company: 'Halcyon', comp: '$190–210k', fit: 71, source: 'Glassdoor' },
+  { role: 'Staff Platform Engineer', company: 'Meridian Labs', comp: '$232–262k', fit: 62, source: 'Watchlist' },
+  { role: 'Senior Full-Stack Engineer', company: 'Fieldnote', comp: '$158–184k', fit: 79, source: 'LinkedIn' },
+  { role: 'Platform Engineer', company: 'Ostrom', comp: '$186–204k', fit: 74, source: 'Glassdoor' }
+];
+
+const TEMPLATES = [
+  { id: 'warm', name: 'Warm', note: 'Rounded, terracotta rule.', swatch: '#c67139' },
+  { id: 'plain', name: 'Plain', note: 'ATS-safe, no ornament.', swatch: '#9b9691' },
+  { id: 'brief', name: 'Brief', note: 'One page, evidence first.', swatch: '#7a8a5e' }
+];
+
+const PROVIDERS = {
+  Anthropic: ['claude-sonnet-4-6', 'claude-opus-4-1', 'claude-haiku-4'],
+  OpenAI: ['gpt-5.1', 'gpt-5-mini', 'o4'],
+  Google: ['gemini-3-pro', 'gemini-3-flash'],
+  Local: ['llama-4-70b', 'qwen3-32b']
+};
+
+class Component extends DCLogic {
+  state = {
+    loggedIn: false, authMode: 'signin', email: 'maya.chen@mail.com',
+    screen: 'connect',
+    sources: { github: true, jira: false, linkedin: true, site: false },
+    consentId: null,
+    siteUrl: '',
+    resumeUploaded: false,
+    answers: {},
+    layout: null,
+    skillId: 'lead',
+    roleId: 'staff',
+    hoverRole: null,
+    marketFilter: 'All markets',
+    jobFilter: 'All',
+    subs: { 'Northwind Pay': true, 'Meridian Labs': true, 'Halcyon': false, 'Ostrom': false },
+    done: { t1: true, t2: false, t3: false, t4: false, t5: false, t6: false, t7: false, t8: false, t9: false },
+    tpl: 'warm',
+    company: 'Meridian Labs',
+    opts: { metrics: true, reorder: true, trim: false },
+    edits: {},
+    saved: [{ id: 1, name: 'Senior Backend — Northwind Pay', when: 'Saved 4 days ago', roleId: 'srbe', company: 'Northwind Pay', tpl: 'plain' }],
+    savedId: null,
+    chat: [{ role: 'ai', text: 'I have your profile and the Staff Platform Engineer bar. Ask me to rewrite anything — or use a suggestion below.' }],
+    chatDraft: '',
+    jd: '', jdScored: false,
+    provider: 'Anthropic', model: 'claude-sonnet-4-6', apiKey: '', baseUrl: '', keySaved: false,
+    toast: null
+  };
+
+  go = (screen) => () => this.setState({ screen, toast: null });
+
+  flash(msg) {
+    this.setState({ toast: msg });
+    clearTimeout(this._t);
+    this._t = setTimeout(() => this.setState({ toast: null }), 2800);
+  }
+  componentWillUnmount() { clearTimeout(this._t); }
+
+  get role() { return ROLES.find(r => r.id === this.state.roleId) || ROLES[0]; }
+  get skill() { return SKILLS.find(s => s.id === this.state.skillId) || SKILLS[0]; }
+  get layout() { return this.state.layout || this.props.defaultLayout || 'A'; }
+  get modelName() { return this.state.keySaved ? this.state.model : 'your model'; }
+
+  get confidence() {
+    const perSource = Object.values(this.state.sources).filter(Boolean).length * 11;
+    const ans = Object.keys(this.state.answers).length * 4;
+    return Math.min(98, 42 + perSource + ans + (this.state.resumeUploaded ? 6 : 0));
+  }
+
+  sel(active) {
+    return active
+      ? { border: 'var(--color-accent)', bg: 'var(--color-accent-200)', fg: 'var(--color-accent-800)' }
+      : { border: 'var(--color-neutral-300)', bg: 'transparent', fg: 'var(--color-text)' };
+  }
+
+  baseSummary(role) {
+    return 'Backend engineer with four years in payments, strongest in API and service design. ' +
+      (role.id === 'staff'
+        ? 'Currently building the cross-team and reliability record that Staff work is scored on — one migration led, one SLO owned.'
+        : 'Ships reliably: median 2.4-day cycle time across 218 tickets, 94% of opened PRs merged.') +
+      ' Targeting ' + role.name + (this.state.company ? ' at ' + this.state.company : '') + '.';
+  }
+
+  setEdit(key, text) { this.setState(p => ({ edits: { ...p.edits, [key]: text } })); }
+
+  aiReply(text) {
+    const t = text.toLowerCase();
+    const role = this.role;
+    if (t.includes('short') || t.includes('trim') || t.includes('concise')) {
+      this.setEdit('summary', 'Backend engineer, four years in payments. Strongest in API and service design; targeting ' + role.name + '.');
+      return 'Cut the summary to two lines and kept the API-design claim, since that is your highest-scoring dimension.';
+    }
+    if (t.includes('metric') || t.includes('number') || t.includes('quantif')) {
+      this.setState(p => ({ opts: { ...p.opts, metrics: true } }));
+      return 'Quantified every bullet I had Jira or GitHub evidence for — duplicate-charge incidents, cycle time and merge rate are now on the page.';
+    }
+    if (t.includes('lead') || t.includes('senior') || t.includes('staff')) {
+      this.setEdit('b0', 'Led the idempotency and retry rework for payments-svc across two teams, cutting duplicate-charge incidents from 9/quarter to 1.');
+      return 'Rewrote the first bullet in leadership language and named the second team — that is the gap ' + role.name + ' panels probe first.';
+    }
+    if (t.includes('gap') || t.includes('weak') || t.includes('reliab')) {
+      return 'I would not hide the reliability gap. Add one line about the SLO you are proposing — an in-progress fact reads better than an absence.';
+    }
+    return 'Rewrote nothing yet — tell me which section to work on, or try one of the suggestions. I can also match the tone to the ' + role.name + ' posting you pasted.';
+  }
+
+  send(text) {
+    if (!text.trim()) return;
+    const reply = this.aiReply(text);
+    this.setState(p => ({ chat: [...p.chat, { role: 'me', text }, { role: 'ai', text: reply }], chatDraft: '' }));
+  }
+
+  renderVals() {
+    const s = this.state, role = this.role, skill = this.skill, layout = this.layout;
+    const conf = this.confidence;
+    const model = this.modelName;
+
+    const screens = [
+      { id: 'connect', num: '01', label: 'Sources', title: 'Bring in your real work', kicker: 'Profile · Step 1' },
+      { id: 'clarify', num: '02', label: 'Questions', title: 'Three things I need you to settle', kicker: 'Profile · Step 2' },
+      { id: 'strengths', num: '03', label: 'Strengths', title: 'Where you actually stand', kicker: 'Report' },
+      { id: 'roles', num: '04', label: 'Role map', title: 'The roles worth your next six months', kicker: 'Report' },
+      { id: 'plan', num: '05', label: 'Gap plan', title: 'Closing the distance', kicker: 'Plan' },
+      { id: 'jobs', num: '06', label: 'Jobs', title: 'Openings matched to the profile', kicker: 'Market' },
+      { id: 'resume', num: '07', label: 'Résumé', title: 'Written for one role at a time', kicker: 'Output' },
+      { id: 'ai', num: '', label: 'AI & model', title: 'Bring your own model', kicker: 'System configuration' }
+    ];
+    const flowScreens = screens.filter(x => x.id !== 'ai');
+    const cur = screens.find(x => x.id === s.screen) || screens[0];
+
+    // radar
+    const cx = 210, cy = 200, R = 138, n = SKILLS.length;
+    const pt = (i, v) => {
+      const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+      return [cx + Math.cos(a) * R * (v / 100), cy + Math.sin(a) * R * (v / 100)];
+    };
+    const ringPoints = f => SKILLS.map((_, i) => pt(i, 100 * f).map(v => v.toFixed(1)).join(',')).join(' ');
+    const axes = SKILLS.map((sk, i) => {
+      const [ex, ey] = pt(i, 100);
+      const [px, py] = pt(i, sk.score);
+      const [lx, ly] = pt(i, 118);
+      const active = sk.id === s.skillId;
+      return {
+        x: ex.toFixed(1), y: ey.toFixed(1), px: px.toFixed(1), py: py.toFixed(1),
+        leftPct: ((lx / 420) * 100).toFixed(2) + '%', topPct: ((ly / 410) * 100).toFixed(2) + '%',
+        short: sk.short, score: sk.score, dot: active ? 6.5 : 4,
+        weight: active ? 800 : 600,
+        color: active ? 'var(--color-accent-700)' : 'var(--color-text)',
+        pick: () => this.setState({ skillId: sk.id })
+      };
+    });
+
+    const ledger = SKILLS.map(sk => {
+      const t = role.profile[sk.id], d = sk.score - t;
+      return {
+        name: sk.name, youPct: sk.score + '%', targetPct: t + '%',
+        delta: (d >= 0 ? '+' : '') + d,
+        deltaColor: d >= 0 ? 'var(--color-accent-2-800)' : 'var(--color-accent-700)',
+        weight: sk.id === s.skillId ? 800 : 600,
+        oneLine: sk.evidence[0].src + ' — ' + sk.evidence[0].text,
+        pick: () => this.setState({ skillId: sk.id })
+      };
+    }).sort((a, b) => parseInt(a.delta, 10) - parseInt(b.delta, 10));
+
+    // bubbles
+    const px0 = 74, px1 = 660, py0 = 24, py1 = 388;
+    const bx = v => px0 + ((v - 54) / 40) * (px1 - px0);
+    const by = v => py1 - ((v - 160) / 95) * (py1 - py0);
+    // Label placement: try slots around the bubble and take the first that hits
+    // neither another label nor any bubble, so every name owns one circle.
+    const geo = ROLES.map(r => ({ r, rad: 16 + (r.fit / 100) * 34, x: bx(r.bar), y: by(r.salary) }));
+    // Label placement: score every candidate slot around the bubble by how much
+    // it would overlap other bubbles, already-placed labels, and the plot edge;
+    // take the cheapest. Guarantees a best-effort position in dense clusters.
+    const placed = [], labelPos = {};
+    const overlap = (a, b) => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) *
+      Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+    [...geo].sort((a, b) => b.r.salary - a.r.salary).forEach(g => {
+      const half = (g.r.name.length * 9.2) / 2, hh = 15;
+      const slots = [];
+      [1, 1.22, 1.5].forEach(ring => {
+        [90, 270, 45, 135, 315, 225, 0, 180, 20, 160, 200, 340, 60, 120, 240, 300].forEach(deg => {
+          const a = (deg * Math.PI) / 180;
+          slots.push({
+            x: g.x + Math.cos(a) * (g.rad + half * 0.55 + 16) * ring,
+            y: g.y + Math.sin(a) * (g.rad + hh + 12) * ring
+          });
+        });
+      });
+      let best = null;
+      slots.forEach(c => {
+        const box = { x0: c.x - half, x1: c.x + half, y0: c.y - hh, y1: c.y + hh };
+        let cost = 0;
+        geo.forEach(o => {
+          cost += 0.7 * overlap(box, { x0: o.x - o.rad, x1: o.x + o.rad, y0: o.y - o.rad, y1: o.y + o.rad });
+        });
+        placed.forEach(p => {
+          cost += 6 * overlap(box, { x0: p.x - p.half, x1: p.x + p.half, y0: p.y - hh - 3, y1: p.y + hh + 3 });
+        });
+        cost += 40000 * (box.x0 < px0 + 4 || box.x1 > px1 - 4 || box.y0 < py0 + 6 || box.y1 > py1 - 8 ? 1 : 0);
+        cost += Math.hypot(c.x - g.x, c.y - g.y) * 6;
+        if (!best || cost < best.cost) best = { cost, x: c.x, y: c.y };
+      });
+      placed.push({ x: best.x, half, y: best.y });
+      labelPos[g.r.id] = best;
+    });
+    const bubbles = ROLES.map(r => {
+      const active = r.id === s.roleId, hover = r.id === s.hoverRole;
+      const rad = 16 + (r.fit / 100) * 34;
+      const g = geo.find(o => o.r.id === r.id), lp = labelPos[r.id];
+      const dx = lp.x - g.x, dy = lp.y - g.y, len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len, uy = dy / len;
+      const half = (r.name.length * 9.2) / 2;
+      const pull = Math.abs(uy) > Math.abs(ux) ? 22 : half + 8;
+      const showLeader = len > rad + 34;
+      return {
+        leaderOpacity: showLeader ? 0.5 : 0,
+        lx1: (g.x + ux * (rad + 3)).toFixed(1), ly1: (g.y + uy * (rad + 3)).toFixed(1),
+        lx2: (lp.x - ux * pull).toFixed(1), ly2: (lp.y - uy * pull).toFixed(1),
+        cx: bx(r.bar).toFixed(1), cy: by(r.salary).toFixed(1), r: rad.toFixed(1),
+        leftPct: ((bx(r.bar) / 680) * 100).toFixed(2) + '%',
+        labelLeftPct: ((labelPos[r.id].x / 680) * 100).toFixed(2) + '%',
+        labelTopPct: ((labelPos[r.id].y / 440) * 100).toFixed(2) + '%',
+        fill: active ? 'color-mix(in srgb, #c67139 70%, transparent)'
+          : hover ? 'color-mix(in srgb, #c67139 40%, transparent)'
+            : 'color-mix(in srgb, #7a8a5e 32%, transparent)',
+        stroke: active ? 'var(--color-accent-700)' : 'var(--color-accent-2-700)',
+        sw: active ? 3 : 1.5, weight: active ? 800 : 500, name: r.name,
+        labelColor: active ? 'var(--color-accent-900)' : 'var(--color-text)',
+        labelBg: active ? 'var(--color-accent-200)' : 'color-mix(in srgb, #eee7d8 88%, transparent)',
+        pick: () => this.setState({ roleId: r.id, skillId: 'lead' }),
+        enter: () => this.setState({ hoverRole: r.id }),
+        leave: () => this.setState({ hoverRole: null })
+      };
+    });
+
+    const gaps = SKILLS.map(sk => ({ sk, d: sk.score - role.profile[sk.id] }))
+      .sort((a, b) => a.d - b.d).slice(0, 4)
+      .map((g, i) => ({
+        rank: '0' + (i + 1), name: g.sk.name,
+        lift: '+' + Math.max(2, Math.round(Math.abs(g.d) * 0.34)) + ' fit pts',
+        youPct: g.sk.score + '%', targetPct: role.profile[g.sk.id] + '%',
+        why: g.sk.read,
+        evidence: g.sk.evidence[0].src + ' — ' + g.sk.evidence[0].text
+      }));
+
+    const doneCount = Object.values(s.done).filter(Boolean).length;
+    const planProgress = Math.round((doneCount / 9) * 100);
+
+    const jobs = JOBS.filter(j => s.jobFilter === 'All' || j.source === s.jobFilter).map(j => ({
+      ...j,
+      fitColor: j.fit >= 85 ? 'var(--color-accent-700)' : j.fit >= 70 ? 'var(--color-accent-2-700)' : 'var(--color-neutral-600)',
+      tailor: () => {
+        const match = ROLES.find(r => r.name === j.role);
+        this.setState({ screen: 'resume', company: j.company, roleId: match ? match.id : s.roleId });
+      }
+    }));
+
+    const tplDef = {
+      warm: { rule: '3px solid #c67139', nameColor: '#8a4a20' },
+      plain: { rule: '1px solid #cfcac5', nameColor: '#201e1d' },
+      brief: { rule: '3px solid #7a8a5e', nameColor: '#4d5a35' }
+    }[s.tpl];
+
+    const metric = s.opts.metrics;
+    const hl = on => on ? 'color-mix(in srgb, #c67139 18%, transparent)' : 'transparent';
+    const bullet = (key, text, dot, highlight) => ({
+      text: s.edits[key] !== undefined ? s.edits[key] : text,
+      dot, hl: hl(highlight), edit: e => this.setEdit(key, e.target.textContent)
+    });
+    const resumeJobs = [
+      { title: 'Backend Engineer', org: 'Kestrel Financial', when: '2022 — now',
+        bullets: [
+          bullet('b0', metric ? 'Owned the idempotency and retry layer for payments-svc, cutting duplicate-charge incidents from 9/quarter to 1.' : 'Owned the idempotency and retry layer for payments-svc.', '#c67139', metric),
+          bullet('b1', 'Authored 4 accepted RFCs including the v3 ledger API, now serving 6 internal consumers.', '#c67139', false),
+          bullet('b2', metric ? 'Led regional failover for 3 services; median cycle time 2.4 days across 218 shipped tickets.' : 'Contributed to regional failover across 3 services.', '#c67139', metric)
+        ] },
+      { title: 'Software Engineer', org: 'Alder & Co.', when: '2020 — 2022',
+        bullets: [
+          bullet('b3', 'Built the reporting pipeline still in production today; 210 code reviews given across 6 repos.', '#7a8a5e', false),
+          bullet('b4', 'Mentored 2 interns through their first production deploys.', '#7a8a5e', s.opts.reorder)
+        ] }
+    ];
+    const ordered = s.opts.reorder ? [...SKILLS].sort((a, b) => role.profile[b.id] - role.profile[a.id]) : SKILLS;
+    const resumeSkills = (s.opts.trim ? ordered.slice(0, 5) : ordered).map((sk, i) => ({
+      name: sk.name,
+      bg: s.opts.reorder && i < 3 ? '#f2e3d7' : '#f3f1ee',
+      fg: s.opts.reorder && i < 3 ? '#8a4a20' : '#3d3a36'
+    }));
+
+    const effects = [
+      { dim: 'Distributed Systems', delta: s.answers.q1 === 'I designed it' ? '+11' : s.answers.q1 ? '+3' : '—',
+        note: s.answers.q1 ? 'Recorded from your answer.' : 'Unanswered — still scored from PR evidence alone.' },
+      { dim: 'Mentoring & Comms', delta: s.answers.q2 === '3+ formally' ? '+14' : s.answers.q2 === '1–2 informally' ? '+6' : s.answers.q2 ? '0' : '—',
+        note: s.answers.q2 ? 'Recorded from your answer.' : 'Unanswered — the largest single source of uncertainty.' },
+      { dim: 'Role map', delta: s.answers.q3 === 'No, I want to build' ? '−1 role' : s.answers.q3 ? '+1 role' : '—',
+        note: s.answers.q3 ? 'Manager-track roles adjusted on your market map.' : 'Unanswered — manager roles still shown.' }
+    ];
+
+    const consentSrc = SOURCES.find(x => x.id === s.consentId);
+
+    return {
+      isLoggedOut: !s.loggedIn, isLoggedIn: s.loggedIn,
+      email: s.email, setEmail: e => this.setState({ email: e.target.value }),
+      authCta: s.authMode === 'signin' ? 'Sign in' : 'Create account',
+      authSwitch: s.authMode === 'signin' ? 'No account? Create one' : 'Already have an account?',
+      toggleAuthMode: () => this.setState(p => ({ authMode: p.authMode === 'signin' ? 'signup' : 'signin' })),
+      loginGoogle: () => { this.setState({ loggedIn: true, email: 'maya.chen@gmail.com' }); this.flash('Signed in with Google.'); },
+      loginEmail: () => { this.setState({ loggedIn: true }); this.flash(s.authMode === 'signin' ? 'Welcome back.' : 'Account created — set up your model next.'); },
+      loginPitch: [
+        { n: '01', title: 'Connect, don\u2019t retype', note: 'OAuth into GitHub, Jira and LinkedIn; your site gets crawled.' },
+        { n: '02', title: 'See the bar, not vibes', note: 'Eight scored dimensions against the real hiring bar for each role.' },
+        { n: '03', title: 'Know what it pays', note: 'Salary and hiring difficulty for every role you actually fit.' },
+        { n: '04', title: 'Close the gap on purpose', note: 'Milestones, tasks and projects that produce the missing evidence.' }
+      ],
+
+      nav: flowScreens.map(x => {
+        const active = x.id === s.screen;
+        const flag = x.id === 'clarify' && Object.keys(s.answers).length < 3 ? String(3 - Object.keys(s.answers).length) : '';
+        return {
+          num: x.num, label: x.label,
+          bg: active ? 'var(--color-accent-200)' : 'transparent',
+          fg: active ? 'var(--color-accent-800)' : 'var(--color-text)',
+          weight: active ? 700 : 500,
+          flag, flagBg: flag ? 'var(--color-accent)' : 'transparent',
+          go: this.go(x.id)
+        };
+      }),
+      kicker: cur.kicker, title: cur.title, initials: 'MC',
+      confidence: conf, confidencePct: conf + '%',
+      confidenceNote: conf > 85 ? 'Enough to trust the salary bands.' : 'Authorize Jira to tighten the report.',
+      modelName: model,
+      aiChip: s.keySaved ? s.model : 'No model configured',
+      aiChipBg: s.keySaved ? 'var(--color-accent-2-200)' : 'var(--color-accent-200)',
+      aiChipFg: s.keySaved ? 'var(--color-accent-2-800)' : 'var(--color-accent-800)',
+      aiDot: s.keySaved ? 'var(--color-accent-2-600)' : 'var(--color-accent)',
+      goAi: this.go('ai'),
+      settingsBg: s.screen === 'ai' ? 'var(--color-accent-200)' : 'transparent',
+      settingsFg: s.screen === 'ai' ? 'var(--color-accent-800)' : 'var(--color-neutral-800)',
+      settingsNote: s.keySaved ? s.provider + ' · ' + s.model : 'No model configured',
+      settingsFlag: s.keySaved ? '' : '!',
+      settingsFlagBg: s.keySaved ? 'transparent' : 'var(--color-accent)',
+
+      isConnect: s.screen === 'connect', isClarify: s.screen === 'clarify',
+      isStrengths: s.screen === 'strengths', isRoles: s.screen === 'roles',
+      isPlan: s.screen === 'plan', isJobs: s.screen === 'jobs',
+      isResume: s.screen === 'resume', isAi: s.screen === 'ai',
+
+      sources: SOURCES.map(src => {
+        const on = s.sources[src.id];
+        const isSite = src.id === 'site';
+        return {
+          name: src.name, kind: src.kind, detail: src.detail, glyph: src.glyph,
+          isSite, isOauth: !isSite,
+          iconBg: on ? 'var(--color-accent-200)' : 'var(--color-neutral-200)',
+          iconFg: on ? 'var(--color-accent-800)' : 'var(--color-neutral-700)',
+          status: on ? 'Connected' : 'Not linked',
+          tagClass: on ? 'tag tag-accent-2' : 'tag tag-outline',
+          btnClass: on ? 'btn btn-secondary' : 'btn btn-primary',
+          action: on ? 'Revoke' : (isSite ? 'Add site' : 'Authorize with OAuth'),
+          account: on ? src.account : '',
+          toggle: () => {
+            if (on) {
+              this.setState(p => ({ sources: { ...p.sources, [src.id]: false } }));
+              this.flash(src.name + ' access revoked.');
+            } else if (isSite) {
+              this.setState(p => ({ sources: { ...p.sources, site: true } }));
+              this.flash('Crawling ' + (s.siteUrl || 'your site') + ' for posts and talks.');
+            } else {
+              this.setState({ consentId: src.id });
+            }
+          }
+        };
+      }),
+      siteUrl: s.siteUrl, setSiteUrl: e => this.setState({ siteUrl: e.target.value }),
+      consent: consentSrc ? { name: consentSrc.name, glyph: consentSrc.glyph, scopes: consentSrc.scopes } : null,
+      approveConsent: () => {
+        const id = s.consentId;
+        this.setState(p => ({ sources: { ...p.sources, [id]: true }, consentId: null }));
+        this.flash((SOURCES.find(x => x.id === id) || {}).name + ' authorized — re-reading your history.');
+      },
+      cancelConsent: () => this.setState({ consentId: null }),
+
+      signals: [
+        { n: '218', label: 'tickets closed', src: 'Jira · 18 months' },
+        { n: '61', label: 'repos with your commits', src: 'GitHub' },
+        { n: '210', label: 'code reviews given', src: 'GitHub' },
+        { n: '4', label: 'engineering posts', src: 'Personal site' }
+      ],
+      resumeFileNote: s.resumeUploaded ? 'maya-chen-resume-2024.pdf — parsed, 2 roles and 11 bullets found.' : 'Optional. If you have one, it gets revised rather than replaced.',
+      uploadResume: () => { this.setState({ resumeUploaded: true }); this.flash('Résumé parsed — 11 bullets ready to revise.'); },
+      runAnalysis: () => {
+        if (!s.keySaved) { this.setState({ screen: 'ai' }); this.flash('Add a provider and key first — analysis runs on your model.'); return; }
+        this.setState({ screen: 'clarify' });
+        this.flash(s.model + ' built your profile. A few gaps left to settle.');
+      },
+
+      questions: QUESTIONS.map(q => ({
+        num: q.num, text: q.text, why: q.why,
+        options: q.options.map(o => ({ label: o, ...this.sel(s.answers[q.id] === o), pick: () => this.setState(p => ({ answers: { ...p.answers, [q.id]: o } })) }))
+      })),
+      answerEffects: effects,
+      goStrengths: this.go('strengths'), goRoles: this.go('roles'),
+      goPlan: this.go('plan'), goResume: this.go('resume'),
+
+      role: { name: role.name, fit: role.fit, band: role.band, openings: role.openings, read: role.read },
+      roles: ROLES.map(r => ({ id: r.id, name: r.name })),
+      roleId: s.roleId, setRole: e => this.setState({ roleId: e.target.value }),
+
+      strengthCols: layout === 'A' ? 'repeat(auto-fit, minmax(380px, 1fr))' : 'repeat(auto-fit, minmax(360px, 1fr))',
+      isLayoutA: layout === 'A', isLayoutB: layout === 'B',
+      setLayoutA: () => this.setState({ layout: 'A' }), setLayoutB: () => this.setState({ layout: 'B' }),
+      layoutABorder: layout === 'A' ? 'var(--color-accent)' : 'var(--color-neutral-300)',
+      layoutABg: layout === 'A' ? 'var(--color-accent-200)' : 'transparent',
+      layoutAFg: layout === 'A' ? 'var(--color-accent-800)' : 'var(--color-text)',
+      layoutBBorder: layout === 'B' ? 'var(--color-accent)' : 'var(--color-neutral-300)',
+      layoutBBg: layout === 'B' ? 'var(--color-accent-200)' : 'transparent',
+      layoutBFg: layout === 'B' ? 'var(--color-accent-800)' : 'var(--color-text)',
+
+      rings: [0.25, 0.5, 0.75, 1].map(f => ({ points: ringPoints(f) })),
+      axes,
+      youPoints: SKILLS.map((sk, i) => pt(i, sk.score).map(v => v.toFixed(1)).join(',')).join(' '),
+      targetPoints: SKILLS.map((sk, i) => pt(i, role.profile[sk.id]).map(v => v.toFixed(1)).join(',')).join(' '),
+      skill: { name: skill.name, score: skill.score, target: role.profile[skill.id], read: skill.read, evidence: skill.evidence },
+      ledger,
+
+      marketFilters: ['All markets', 'Berlin', 'Remote EU'].map(f => ({
+        label: f, ...this.sel(s.marketFilter === f), pick: () => this.setState({ marketFilter: f })
+      })),
+      bubbles,
+      xTicks: [[58, 'Approachable'], [69, 'Moderate'], [80, 'High'], [90, 'Very high']]
+        .map(t => ({ leftPct: ((bx(t[0]) / 680) * 100).toFixed(2) + '%', label: t[1] })),
+      yTicks: [175, 200, 225, 250].map(v => ({ y: by(v).toFixed(1), topPct: ((by(v) / 440) * 100).toFixed(2) + '%', label: '$' + v + 'k' })),
+      roleDeltas: SKILLS.map(sk => {
+        const d = sk.score - role.profile[sk.id];
+        return { name: sk.name, delta: (d >= 0 ? '+' : '') + d, color: d >= 0 ? 'var(--color-accent-2-700)' : 'var(--color-accent-700)' };
+      }).sort((a, b) => parseInt(a.delta, 10) - parseInt(b.delta, 10)).slice(0, 5),
+
+      gaps,
+      steppingStones: ROLES.filter(r => r.id !== role.id && r.fit > role.fit).slice(0, 3)
+        .map(r => ({ name: r.name, fit: r.fit, note: r.band + ' · ' + r.openings + ' open roles · a credible 12-month bridge' })),
+      projects: PROJECTS,
+      regenPlan: () => this.flash(s.keySaved ? 'Re-drafting the plan with ' + s.model + '…' : 'Configure a model first.'),
+      planProgress, planProgressPct: planProgress + '%',
+      milestones: MILESTONES.map(m => ({
+        title: m.title, window: m.window, outcome: m.outcome,
+        tasks: m.tasks.map(t => ({
+          text: t.text, due: t.due,
+          box: s.done[t.id] ? 'var(--color-accent)' : 'transparent',
+          strike: s.done[t.id] ? 'line-through' : 'none',
+          op: s.done[t.id] ? 0.55 : 1,
+          toggle: () => this.setState(p => ({ done: { ...p.done, [t.id]: !p.done[t.id] } }))
+        }))
+      })),
+
+      jobFilters: ['All', 'LinkedIn', 'Glassdoor', 'Indeed', 'Watchlist'].map(f => ({
+        label: f, ...this.sel(s.jobFilter === f), pick: () => this.setState({ jobFilter: f })
+      })),
+      jobs,
+      subs: Object.keys(s.subs).map(name => ({
+        name, box: s.subs[name] ? 'var(--color-accent)' : 'transparent',
+        note: s.subs[name] ? 'Alerts on' : 'Off',
+        toggle: () => this.setState(p => ({ subs: { ...p.subs, [name]: !p.subs[name] } }))
+      })),
+      subsNote: 'Watched companies are checked nightly across LinkedIn, Glassdoor and Indeed; anything above 70% fit reaches you the same day.',
+      jdText: s.jd, setJd: e => this.setState({ jd: e.target.value }),
+      sampleJd: () => this.setState({ jd: 'Staff Platform Engineer — you will set technical direction across three product teams, own the reliability roadmap, and mentor senior engineers. Requires demonstrated org-level influence and SLO ownership.' }),
+      scoreJd: () => {
+        if (!s.keySaved) { this.setState({ screen: 'ai' }); this.flash('Scoring needs your model — add a key.'); return; }
+        this.setState({ jdScored: true }); this.flash('Scored by ' + s.model + '.');
+      },
+      jdScored: s.jdScored && s.jd.length > 0,
+      jdFit: 62,
+      jdVerdict: 'strong on craft, thin on the influence language they lead with',
+      jdPoints: [
+        { text: 'Lead with the v3 ledger API RFC — it is the closest thing you have to "technical direction".', bg: 'var(--color-accent-200)' },
+        { text: 'They ask for SLO ownership twice. You have none; milestone 2 in your plan creates it.', bg: 'var(--color-bg)' },
+        { text: 'Drop the framework list. Nothing in this JD scores on it.', bg: 'var(--color-bg)' }
+      ],
+
+      templates: TEMPLATES.map(t => ({
+        name: t.name, note: t.note, swatch: t.swatch,
+        border: s.tpl === t.id ? 'var(--color-accent)' : 'var(--color-neutral-300)',
+        bg: s.tpl === t.id ? 'var(--color-accent-200)' : 'transparent',
+        pick: () => this.setState({ tpl: t.id })
+      })),
+      tpl: tplDef,
+      saved: s.saved.map(v => ({
+        name: v.name, when: v.when,
+        bg: s.savedId === v.id ? 'var(--color-accent-200)' : 'var(--color-bg)',
+        load: () => { this.setState({ roleId: v.roleId, company: v.company, tpl: v.tpl, savedId: v.id }); this.flash('Opened “' + v.name + '”.'); }
+      })),
+      saveResume: () => {
+        const id = Date.now();
+        const name = role.name + ' — ' + (s.company || 'no company');
+        this.setState(p => ({ saved: [{ id, name, when: 'Saved just now', roleId: p.roleId, company: p.company, tpl: p.tpl }, ...p.saved], savedId: id }));
+        this.flash('Saved “' + name + '”.');
+      },
+      company: s.company, setCompany: e => this.setState({ company: e.target.value }),
+      toggles: [
+        { key: 'metrics', label: 'Quantify bullets with data from Jira and GitHub' },
+        { key: 'reorder', label: 'Reorder skills by what this role screens for' },
+        { key: 'trim', label: 'Trim to one page' }
+      ].map(t => ({
+        label: t.label, box: s.opts[t.key] ? 'var(--color-accent)' : 'transparent',
+        toggle: () => this.setState(p => ({ opts: { ...p.opts, [t.key]: !p.opts[t.key] } }))
+      })),
+      exportResume: () => this.flash('Exported — ' + role.name + ', ' + s.tpl + ' template, white background.'),
+      exportNote: 'Highlighted lines are the ones rewritten for ' + role.name + (s.company ? ' at ' + s.company : '') + '.',
+      resumeName: s.edits.name !== undefined ? s.edits.name : 'Maya Lin Chen',
+      editName: e => this.setEdit('name', e.target.textContent),
+      headline: role.name.replace('Senior ', '') + ' · ' + role.band,
+      summary: s.edits.summary !== undefined ? s.edits.summary : this.baseSummary(role),
+      editSummary: e => this.setEdit('summary', e.target.textContent),
+      resumeJobs, resumeSkills,
+
+      chat: s.chat.map(m => ({
+        text: m.text,
+        align: m.role === 'me' ? 'flex-end' : 'flex-start',
+        bg: m.role === 'me' ? 'var(--color-accent-200)' : 'var(--color-bg)',
+        fg: m.role === 'me' ? 'var(--color-accent-900)' : 'var(--color-text)'
+      })),
+      chatSuggestions: ['Make the summary shorter', 'Quantify every bullet', 'Rewrite for a Staff panel'].map(l => ({
+        label: l, send: () => this.send(l)
+      })),
+      chatDraft: s.chatDraft,
+      setChatDraft: e => this.setState({ chatDraft: e.target.value }),
+      sendChat: () => this.send(s.chatDraft),
+      chatKey: e => { if (e.key === 'Enter') this.send(e.target.value); },
+
+      providers: Object.keys(PROVIDERS).map(p => ({
+        label: p, ...this.sel(s.provider === p),
+        pick: () => this.setState({ provider: p, model: PROVIDERS[p][0], keySaved: false })
+      })),
+      models: PROVIDERS[s.provider].map(m => ({ id: m })),
+      model: s.model, setModel: e => this.setState({ model: e.target.value }),
+      apiKey: s.apiKey, setApiKey: e => this.setState({ apiKey: e.target.value, keySaved: false }),
+      baseUrl: s.baseUrl, setBaseUrl: e => this.setState({ baseUrl: e.target.value }),
+      testKey: () => {
+        if (!s.apiKey) { this.flash('Paste a key first.'); return; }
+        this.setState({ keySaved: true }); this.flash(s.model + ' reachable — key saved in this browser.');
+      },
+      testStatus: s.keySaved ? '✓ Connected — ' + s.model : (s.apiKey ? 'Not tested yet' : 'No key saved'),
+      testColor: s.keySaved ? 'var(--color-accent-2-800)' : 'var(--color-neutral-700)',
+      aiUses: [
+        { title: 'Follow-up questions', note: 'Generated only when the connectors leave a dimension unscored.' },
+        { title: 'Profile & market analysis', note: 'Reads your commits, tickets and the job feed to score fit, hiring bar and salary.' },
+        { title: 'Gap plan', note: 'Turns the four largest gaps into milestones, tasks and a schedule.' },
+        { title: 'Résumé revision', note: 'Rewrites bullets for the role you chose — in the chat beside the page.' }
+      ],
+      toast: s.toast
+    };
+  }
+}
+
+</script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+[project]
+name = "job-searching-advisor-backend"
+version = "0.1.0"
+description = "Modular monolith (api + worker) and crawler for the Job Searching Advisor"
+requires-python = ">=3.12,<3.13"
+
+dependencies = [
+  # API
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "sse-starlette>=2.1",
+  "python-multipart>=0.0.12",
+  # Persistence
+  "sqlalchemy[asyncio]>=2.0.36",
+  "asyncpg>=0.30",
+  "alembic>=1.14",
+  "pgvector>=0.3.6",
+  # Jobs
+  "procrastinate>=2.15",
+  "psycopg[binary,pool]>=3.2",
+  # Auth & crypto
+  "pyjwt[crypto]>=2.9",
+  "cryptography>=43.0",
+  # Outbound HTTP (SSRF-guarded in kernel.fetch)
+  "httpx>=0.27",
+  # Object storage
+  "boto3>=1.35",
+  # Document parsing (worker only)
+  "pypdf>=5.1",
+  "python-docx>=1.1",
+  # Local ML: embeddings + clustering. Platform-paid, never the user's key.
+  "sentence-transformers>=3.3",
+  "scikit-learn>=1.5",
+  "numpy>=1.26",
+  # Logging
+  "structlog>=24.4",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "respx>=0.21",
+  "ruff>=0.8",
+  "mypy>=1.13",
+  "import-linter>=2.1",
+  "pip-audit>=2.7",
+  "types-boto3>=1.35",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "S", "ASYNC", "RUF"]
+ignore = ["S101"]  # assert is how pytest asserts
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+exclude = "^migrations/versions/"
+
+[[tool.mypy.overrides]]
+module = ["pgvector.*", "sentence_transformers.*", "sklearn.*", "procrastinate.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers"
+markers = ["integration: needs infra already up and migrated"]

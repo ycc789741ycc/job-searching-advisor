@@ -1,0 +1,129 @@
+# Module boundaries from docs/technical_boundaries.md section 2, enforced in CI.
+# A violation here is a design defect, not a style nit.
+
+[importlinter]
+root_packages =
+    app
+    kernel
+    modules
+    crawler
+include_external_packages = True
+
+# Rule 1: a module imports another module ONLY through its public.py.
+[importlinter:contract:module-public-surface]
+name = Modules talk to each other only through public.py
+type = forbidden
+source_modules =
+    modules.identity
+    modules.profile
+    modules.market
+    modules.rolemap
+    modules.assessment
+forbidden_modules =
+    modules.identity.domain
+    modules.identity.infra
+    modules.identity.api
+    modules.identity.jobs
+    modules.profile.domain
+    modules.profile.infra
+    modules.profile.api
+    modules.profile.jobs
+    modules.market.domain
+    modules.market.infra
+    modules.market.api
+    modules.market.jobs
+    modules.rolemap.domain
+    modules.rolemap.infra
+    modules.rolemap.api
+    modules.rolemap.jobs
+    modules.assessment.domain
+    modules.assessment.infra
+    modules.assessment.api
+    modules.assessment.jobs
+allow_indirect_imports = False
+unmatched_ignore_imports_alias = ignore
+
+# Rule 2: domain/ is pure. No infra, no kernel, no framework.
+[importlinter:contract:pure-domain]
+name = domain/ imports no infra, kernel or framework
+type = forbidden
+source_modules =
+    modules.identity.domain
+    modules.profile.domain
+    modules.market.domain
+    modules.rolemap.domain
+    modules.assessment.domain
+forbidden_modules =
+    kernel
+    fastapi
+    sqlalchemy
+    httpx
+    boto3
+    procrastinate
+    alembic
+    modules.identity.infra
+    modules.profile.infra
+    modules.market.infra
+    modules.rolemap.infra
+    modules.assessment.infra
+
+# Rule 3: the crawler is a separate deployable with a narrow surface.
+[importlinter:contract:crawler-surface]
+name = crawler imports only its allowed kernel pieces and market.public
+type = forbidden
+source_modules =
+    crawler
+forbidden_modules =
+    kernel.crypto
+    kernel.ai_gateway
+    kernel.auth
+    kernel.storage
+    kernel.jobs
+    modules.identity
+    modules.profile
+    modules.rolemap
+    modules.assessment
+    modules.market.domain
+    modules.market.infra
+    modules.market.api
+    modules.market.jobs
+
+# Rule 4: only the AI gateway and the profile connectors may decrypt.
+[importlinter:contract:decrypt-callers]
+name = Only kernel.ai_gateway and profile connectors may import kernel.crypto
+type = forbidden
+source_modules =
+    modules.identity.api
+    modules.identity.jobs
+    modules.market
+    modules.rolemap
+    modules.assessment
+    crawler
+    app
+forbidden_modules =
+    kernel.crypto
+
+# Rule 5: modules never touch an LLM SDK directly.
+[importlinter:contract:no-direct-llm]
+name = Modules reach an LLM only through kernel.ai_gateway
+type = forbidden
+source_modules =
+    modules.identity
+    modules.profile
+    modules.market
+    modules.rolemap
+    modules.assessment
+    crawler
+forbidden_modules =
+    kernel.ai_gateway.providers
+
+# Rule 6: the kernel is a technical kernel. It knows no domain.
+[importlinter:contract:kernel-knows-no-domain]
+name = kernel/ never imports a domain module
+type = forbidden
+source_modules =
+    kernel
+forbidden_modules =
+    modules
+    crawler
+    app
