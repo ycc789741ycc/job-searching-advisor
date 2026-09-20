@@ -1,3 +1,3 @@
-from kernel.jobs.app import Queue, build_app
+from kernel.jobs.app import JOB_SCHEMA, Queue, build_app
 
-__all__ = ["Queue", "build_app"]
+__all__ = ["JOB_SCHEMA", "Queue", "build_app"]

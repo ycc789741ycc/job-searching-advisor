@@ -15,6 +15,7 @@ COMPOSE       := docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE)
 RUN_DIR       := .local/run
 LOG_DIR       := .local/log
 UV            := uv
+WITH_ENV      := infra/with-env.sh
 UV_RUN        := $(UV) run --directory backend
 PATTERN       ?=
 
@@ -81,7 +82,8 @@ stop-infra: require-env
 # --- migrations -------------------------------------------------------------
 
 migrate: require-env
-	$(UV_RUN) alembic -c alembic.ini upgrade head
+	$(WITH_ENV) $(UV_RUN) alembic -c alembic.ini upgrade head
+	$(WITH_ENV) $(UV_RUN) python -m app.apply_job_schema
 
 # --- test -------------------------------------------------------------------
 
@@ -92,7 +94,7 @@ test-unit:
 
 # Assumes infra is already up and migrated. Never starts infra itself.
 test-integration: require-env
-	$(UV_RUN) pytest tests/integration $(PYTEST_FILTER)
+	$(WITH_ENV) $(UV_RUN) pytest tests/integration $(PYTEST_FILTER)
 
 # --- supporting targets -----------------------------------------------------
 
@@ -108,7 +110,7 @@ scan:
 	cd web && npm audit --audit-level=high
 
 gen-client: require-env
-	$(UV_RUN) python -m app.export_openapi > web/openapi.json
+	$(WITH_ENV) $(UV_RUN) python -m app.export_openapi > web/openapi.json
 	cd web && npm run gen:client
 
 # DESTRUCTIVE. Never a dependency of a build, start, stop or test target.

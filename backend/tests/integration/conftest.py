@@ -70,6 +70,14 @@ async def crawler_engine(settings: Settings) -> AsyncIterator[AsyncEngine]:
 
 
 @pytest_asyncio.fixture
+async def crawler_database(settings: Settings) -> AsyncIterator[Database]:
+    """A Database on the crawler role — how CrawlIngest is wired in production."""
+    db = Database(settings, url=str(settings.crawler_database_url))
+    yield db
+    await db.dispose()
+
+
+@pytest_asyncio.fixture
 async def account(database: Database) -> AsyncIterator[uuid.UUID]:
     """A throwaway account, removed afterwards along with everything it owns."""
     account_id = uuid.uuid4()

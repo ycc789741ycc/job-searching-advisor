@@ -29,7 +29,15 @@ def _psycopg_dsn(sqlalchemy_url: str) -> str:
     )
 
 
-def build_app(settings: Settings) -> App:
+# Procrastinate manages its own tables. They live in their own schema rather
+# than `public`, which has no default grants in this database.
+JOB_SCHEMA = "procrastinate"
+
+
+def build_app(settings: Settings, *, url: str | None = None) -> App:
     return App(
-        connector=PsycopgConnector(conninfo=_psycopg_dsn(str(settings.database_url))),
+        connector=PsycopgConnector(
+            conninfo=_psycopg_dsn(url or str(settings.database_url)),
+            kwargs={"options": f"-c search_path={JOB_SCHEMA}"},
+        ),
     )

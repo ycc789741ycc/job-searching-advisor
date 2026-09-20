@@ -51,6 +51,10 @@ psql_super -q -c "GRANT USAGE ON SCHEMA public TO app_rw, crawler_rw, aggregator
 
 # Alembic's bookkeeping lives here, because public has no default grants.
 psql_super -q -c 'CREATE SCHEMA IF NOT EXISTS migrations AUTHORIZATION migrator;'
+# Procrastinate owns and manages its own tables; it just needs somewhere to put
+# them that is not the locked-down public schema.
+psql_super -q -c 'CREATE SCHEMA IF NOT EXISTS procrastinate AUTHORIZATION migrator;'
+psql_super -q -c 'GRANT USAGE ON SCHEMA procrastinate TO app_rw;'
 
 psql_super -q -c "CREATE EXTENSION IF NOT EXISTS vector;"
 psql_super -q -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"

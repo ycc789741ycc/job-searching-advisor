@@ -532,6 +532,12 @@ async def _upsert_posting(
 
     row.last_seen_at = now
     row.status = str(PostingStatus.OPEN)
+    # The same opening can arrive from several sources — a company's Greenhouse
+    # board and its own career page carrying JSON-LD. Dedup collapses them into
+    # one row, and that row belongs to whichever source saw it last, so expiry
+    # (which is scoped per source) stays coherent instead of leaving a posting
+    # that no crawl is responsible for.
+    row.crawl_source_id = source_id
     row.title = posting.title
     row.description = posting.description
     row.url = posting.url

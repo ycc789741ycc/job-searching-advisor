@@ -23,3 +23,6 @@ web/dist/
 
 # Models cached by sentence-transformers
 .cache/
+
+# Generated API contract (produced by `make gen-client`)
+web/openapi.json

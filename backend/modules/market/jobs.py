@@ -53,20 +53,25 @@ async def discover_board(deps: Any, *, owner_id: str, company_id: str, company_n
 
 async def refresh_company(deps: Any, *, owner_id: str, company_id: str) -> None:
     """Re-crawl one watched company now, inside the per-day cap."""
+    from app.container import build_crawl_ingest
     from crawler.run import crawl_one_source
-    from modules.market.public import CrawlIngest
 
-    ingest = CrawlIngest(deps.database)
-    sources = [s for s in await ingest.due_sources() if str(s.company_id) == company_id]
     settings = deps.settings
-    for source in sources:
-        await crawl_one_source(
-            ingest,
-            source,
-            user_agent=settings.crawl_user_agent,
-            timeout_seconds=settings.crawl_http_timeout_seconds,
-            rate_limit_per_second=settings.crawl_rate_limit_per_host_per_second,
-        )
+    # Writing postings needs the crawler role: app_rw is read-only on the shared
+    # market zone, which is what keeps posting data owned by one writer.
+    crawler_db, ingest = build_crawl_ingest(settings)
+    try:
+        sources = [s for s in await ingest.due_sources() if str(s.company_id) == company_id]
+        for source in sources:
+            await crawl_one_source(
+                ingest,
+                source,
+                user_agent=settings.crawl_user_agent,
+                timeout_seconds=settings.crawl_http_timeout_seconds,
+                rate_limit_per_second=settings.crawl_rate_limit_per_host_per_second,
+            )
+    finally:
+        await crawler_db.dispose()
 
     async with deps.database.for_user(uuid.UUID(owner_id)) as session:
         rows = await session.execute(
