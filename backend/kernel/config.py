@@ -122,4 +122,4 @@ class MissingSecretError(RuntimeError):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """The process-wide settings object. Built once, on first call."""
-    return Settings()  # type: ignore[call-arg]
+    return Settings()

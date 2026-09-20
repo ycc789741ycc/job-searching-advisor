@@ -1,0 +1,59 @@
+# The pipeline runs the same `make` targets a developer runs — no CI-only
+# commands, and infra before app, with migrations as their own step.
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Create the environment file
+        # Every environment supplies the same variable names from .env.example,
+        # only the values differ. CI is no exception.
+        run: ./.github/workflows/ci-env.sh
+
+      - name: Lint and typecheck
+        run: make lint
+
+      - name: Unit tests
+        # Hermetic: nothing is running yet, and that is the point.
+        run: make test-unit
+
+      - run: make build-infra
+      - run: make build-app
+      - run: make start-infra
+      - run: make migrate
+
+      - name: Integration tests
+        run: make test-integration
+
+      - name: Check the generated API client is current
+        run: |
+          make gen-client
+          git diff --exit-code web/src/api/ \
+            || { echo "The API contract changed. Run 'make gen-client' and commit."; exit 1; }
+
+      - name: Dependency scan
+        run: make scan
+
+      - name: Stop
+        if: always()
+        run: make stop-app || true; make stop-infra || true

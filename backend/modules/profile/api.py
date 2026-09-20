@@ -39,22 +39,22 @@ class AnswerRequest(BaseModel):
 @router.get("/connections")
 async def list_connections(user: CurrentUser, deps: Deps) -> list[dict[str, object]]:
     connected = {c.kind: c for c in await deps.profile.connections(user)}
-    return [
-        {
-            "kind": kind,
-            "connected": kind in connected,
-            "account": connected[kind].account if kind in connected else None,
-            "status": connected[kind].status if kind in connected else "disconnected",
-            "last_synced_at": (
-                connected[kind].last_synced_at.isoformat()
-                if kind in connected and connected[kind].last_synced_at
-                else None
-            ),
-            "last_error": connected[kind].last_error if kind in connected else None,
-            "scopes": list(scopes),
-        }
-        for kind, scopes in SCOPE_COPY.items()
-    ]
+    rows: list[dict[str, object]] = []
+    for kind, scopes in SCOPE_COPY.items():
+        connection = connected.get(kind)
+        synced = connection.last_synced_at if connection is not None else None
+        rows.append(
+            {
+                "kind": kind,
+                "connected": connection is not None,
+                "account": connection.account if connection is not None else None,
+                "status": connection.status if connection is not None else "disconnected",
+                "last_synced_at": synced.isoformat() if synced is not None else None,
+                "last_error": connection.last_error if connection is not None else None,
+                "scopes": list(scopes),
+            }
+        )
+    return rows
 
 
 @router.get("/connections/{kind}/authorize-url")

@@ -104,7 +104,7 @@ class StubAdapter:
         return f"{self._url}/{slug}"
 
     def parse(self, payload: object, *, company_name: str) -> list[object]:
-        return list(payload or [])  # type: ignore[arg-type]
+        return list(payload) if isinstance(payload, list) else []
 
 
 async def test_discovery_returns_the_first_board_that_has_postings() -> None:

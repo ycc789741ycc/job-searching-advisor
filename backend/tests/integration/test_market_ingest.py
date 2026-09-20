@@ -68,9 +68,7 @@ async def source(crawler_database: Database):
         )
 
 
-async def test_a_crawl_stores_normalised_postings(
-    crawler_database: Database, source
-) -> None:
+async def test_a_crawl_stores_normalised_postings(crawler_database: Database, source) -> None:
     ingest = CrawlIngest(crawler_database)
     upserted, expired = await ingest.record_crawl(
         source, [posting("Senior Backend Engineer"), posting("Platform Engineer")]
@@ -117,7 +115,7 @@ async def test_a_posting_missing_from_a_crawl_is_expired_not_deleted(
             ),
             {"id": source},
         )
-        assert dict(rows.all()) == {
+        assert {title: status for title, status in rows.all()} == {
             "Gone Role": "expired",
             "Senior Backend Engineer": "open",
         }
@@ -177,9 +175,7 @@ async def test_another_users_pasted_jd_is_not_in_my_scope(
     assert all(p.title != "Their Private Role" for p in mine)
 
 
-async def test_the_manual_refresh_cap_is_enforced(
-    database: Database, account: uuid.UUID
-) -> None:
+async def test_the_manual_refresh_cap_is_enforced(database: Database, account: uuid.UUID) -> None:
     """The weekly schedule stays the norm."""
     from kernel.errors import RateLimitedError
 

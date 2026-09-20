@@ -47,7 +47,7 @@ async def dispatch_pending(deps: Container, *, limit: int = BATCH_SIZE) -> int:
                 event.last_error = f"{exc.__class__.__name__}: {exc}"
                 log.error(
                     "outbox.dispatch_failed",
-                    event=event.name,
+                    event_name=event.name,
                     event_id=str(event.id),
                     attempts=event.attempts,
                 )

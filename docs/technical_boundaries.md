@@ -245,6 +245,19 @@ flowchart LR
 | 14 Weekly crawl | §6 weekly cron chain; `MatchDigest` |
 
 ## 8. Open questions
-1. **PaaS choice:** Fly.io, Render or Railway? This affects per-service secrets (the master key must be settable on `api` and `worker` only) and whether a single Playwright-capable worker image fits memory limits.
-2. **Auth provider:** Clerk, Auth0 or Supabase Auth? Supabase would also offer managed Postgres, which is convenient, but its RLS conventions would need to match §3.
-3. **Email delivery** for digests and prompts (e.g. Postmark, Resend, SES): any preference?
+
+| # | Question | Status |
+|---|---|---|
+| 1 | **PaaS choice** (Fly.io / Render / Railway) | **Still open.** Phase 1 runs on local Docker Compose, so the decision is deferred. It affects per-service secrets — the master key must be settable on `api` and `worker` only — and whether one Playwright-capable worker image fits the memory limit. |
+| 2 | **Auth provider** | **Answered: Clerk.** The SPA uses its React SDK; FastAPI verifies the JWT against its JWKS (`kernel/auth`). Google login in Phase 2 is a provider-side toggle. Nothing vendor-shaped leaks past `kernel/auth`, so swapping issuers later is one module. |
+| 3 | **Email delivery** for digests and prompts | **Still open, not needed yet.** `MatchDigest` and interview-report prompts are Phase 2; the `notify` queue does not exist in Phase 1. |
+
+### Decided during Phase 1 implementation
+
+| Decision | Why |
+|---|---|
+| Alembic's bookkeeping and Procrastinate's tables each get their own schema | `public` has its default grants revoked, so nothing may create objects there. |
+| `make migrate` applies the job schema too, idempotently | The worker's tables must exist before `start-app` brings a worker up — never created lazily by the first worker to connect. |
+| A posting deduped across sources is owned by the source that saw it last | Expiry is scoped per source, so otherwise a deduped posting would have no crawl responsible for expiring it. |
+| The single-company refresh job takes a crawler-role connection | `app_rw` is read-only on the shared market zone; only the crawler writes postings. |
+| One narrow `SELECT`-only RLS policy on `market_user.company_subscription` and `market_user.market_preference`, gated on an `app.fanout` transaction setting | The dispatcher must resolve a market change to affected users, and the crawler must not. The alternative — `BYPASSRLS` on `app_rw` — would have opened every table instead of two columns. |

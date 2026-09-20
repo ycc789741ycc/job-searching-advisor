@@ -1,4 +1,12 @@
-/** Response shapes, mirroring the API's own models. */
+/**
+ * Response shapes.
+ *
+ * `schema.d.ts` beside this file is generated from the API's OpenAPI document
+ * by `make gen-client`, and CI fails if it drifts — that is what guards the
+ * contract. These hand-written types are the narrow, useful view of it:
+ * FastAPI infers `Record<string, unknown>` for the endpoints that return plain
+ * dicts, which is true but useless at a call site.
+ */
 
 export interface Me {
   id: string;

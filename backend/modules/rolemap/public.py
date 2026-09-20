@@ -308,14 +308,14 @@ class RoleMapService:
 
             for key in sorted(keys):
                 session.add(RoleMember(owner_id=owner_id, role_id=role_id, posting_key=key))
-            for requirement in extraction.requirements:
+            for extracted in extraction.requirements:
                 session.add(
                     RoleRequirement(
                         owner_id=owner_id,
                         role_id=role_id,
-                        statement=requirement.statement,
-                        weight=requirement.weight,
-                        expected_level=requirement.expected_level,
+                        statement=extracted.statement,
+                        weight=extracted.weight,
+                        expected_level=extracted.expected_level,
                     )
                 )
 

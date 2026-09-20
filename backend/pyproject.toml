@@ -81,6 +81,16 @@ exclude = "^migrations/versions/"
 module = ["pgvector.*", "sentence_transformers.*", "sklearn.*", "procrastinate.*"]
 ignore_missing_imports = true
 
+# Production code is strict. Tests are not required to annotate every fixture
+# and helper — the signal there is the assertion, and full strictness turns a
+# readable test into a type puzzle.
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+warn_return_any = false
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 asyncio_mode = "auto"

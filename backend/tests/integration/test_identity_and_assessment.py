@@ -83,8 +83,7 @@ async def test_the_stored_key_is_ciphertext_and_never_comes_back(
     async with database.for_user(account) as session:
         stored = await session.execute(
             text(
-                "SELECT encrypted_api_key FROM identity.provider_credential "
-                "WHERE owner_id = :owner"
+                "SELECT encrypted_api_key FROM identity.provider_credential WHERE owner_id = :owner"
             ),
             {"owner": account},
         )

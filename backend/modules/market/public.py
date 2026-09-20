@@ -17,8 +17,9 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from kernel.db import Database
 from kernel.db.base import utcnow
@@ -372,7 +373,7 @@ class MarketService:
                     .join(Company, JobPosting.company_id == Company.id)
                     .where(JobPosting.status == str(PostingStatus.OPEN))
                 )
-                conditions = []
+                conditions: list[ColumnElement[bool]] = []
                 if company_ids:
                     conditions.append(JobPosting.company_id.in_(company_ids))
                 if markets:
@@ -480,9 +481,8 @@ class MarketService:
 # --- helpers ---------------------------------------------------------------
 
 
-def _any_of(conditions: list[object]) -> object:
-    from sqlalchemy import or_
-
+def _any_of(conditions: list[ColumnElement[bool]]) -> ColumnElement[bool]:
+    """A posting is in scope if it matches a watched company *or* a chosen market."""
     return or_(*conditions) if len(conditions) > 1 else conditions[0]
 
 
@@ -560,7 +560,7 @@ async def _expire_unseen(session: AsyncSession, source_id: uuid.UUID, seen_keys:
     if seen_keys:
         query = query.where(JobPosting.canonical_key.notin_(seen_keys))
     result = await session.execute(query)
-    return int(result.rowcount or 0)
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 def _subscription_view(row: CompanySubscription) -> CompanySubscriptionView:

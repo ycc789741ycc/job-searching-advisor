@@ -20,11 +20,19 @@ async def main() -> None:
     settings = get_settings()
     migrator_url = _migrator_dsn()
 
-    app = build_app(settings, url=migrator_url)
-    async with app.open_async():
-        await app.schema_manager.apply_schema_async()
+    # Idempotent, like every other target: applying the schema is a first-install
+    # step, so it only runs when the tables are not there yet. A Procrastinate
+    # version upgrade is a deliberate, separate step — see its own migrations.
+    if _schema_is_applied(migrator_url):
+        print(f"job schema already present in {JOB_SCHEMA}")
+    else:
+        app = build_app(settings, url=migrator_url)
+        async with app.open_async():
+            await app.schema_manager.apply_schema_async()
+        print(f"job schema applied in {JOB_SCHEMA}")
 
-    # The worker and api connect as app_rw, which is not the owner.
+    # The worker and api connect as app_rw, which is not the owner. Grants are
+    # re-applied every time so a newly added table is never left unreachable.
     with psycopg.connect(migrator_url, autocommit=True) as connection:
         for statement in (
             f"GRANT USAGE ON SCHEMA {JOB_SCHEMA} TO app_rw",
@@ -36,7 +44,13 @@ async def main() -> None:
         ):
             connection.execute(statement)
 
-    print(f"job schema applied in {JOB_SCHEMA}")
+
+def _schema_is_applied(dsn: str) -> bool:
+    with psycopg.connect(dsn) as connection:
+        found = connection.execute(
+            "SELECT to_regclass(%s) IS NOT NULL", (f"{JOB_SCHEMA}.procrastinate_jobs",)
+        ).fetchone()
+    return bool(found and found[0])
 
 
 def _migrator_dsn() -> str:

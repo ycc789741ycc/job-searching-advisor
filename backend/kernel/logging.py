@@ -9,10 +9,14 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import MutableMapping
 from contextvars import ContextVar
 from typing import Any
 
 import structlog
+
+# What a structlog processor is handed and must hand back.
+EventDict = MutableMapping[str, Any]
 
 trace_id_var: ContextVar[str | None] = ContextVar("trace_id", default=None)
 
@@ -34,14 +38,14 @@ _SENSITIVE_KEYS = frozenset(
 )
 
 
-def _scrub(_logger: Any, _name: str, event: dict[str, Any]) -> dict[str, Any]:
+def _scrub(_logger: Any, _name: str, event: EventDict) -> EventDict:
     for key in list(event):
         if key.lower() in _SENSITIVE_KEYS:
             event[key] = "[redacted]"
     return event
 
 
-def _add_trace_id(_logger: Any, _name: str, event: dict[str, Any]) -> dict[str, Any]:
+def _add_trace_id(_logger: Any, _name: str, event: EventDict) -> EventDict:
     trace_id = trace_id_var.get()
     if trace_id is not None:
         event["trace_id"] = trace_id

@@ -11,9 +11,19 @@
 * Able to setup and connect under user account
 
 ## Job Platform for Role Map Analysis
-* Glassdoor
-* Indeed
-* LinkedIn
+**Changed during implementation.** Glassdoor, Indeed and LinkedIn cannot be
+crawled — their terms forbid it, and LinkedIn has litigated it
+(`domain_model_review.md` decision 6). Replaced by sources that permit it:
+
+* Public ATS job boards: Greenhouse, Lever, Ashby — driven by the companies a
+  user watches
+* Career pages carrying schema.org `JobPosting` JSON-LD
+* JDs the user pastes, which stay private to them
+* A company with none of the above gets `manual` coverage: it says plainly that
+  nothing updates automatically, and offers "paste a JD" instead
+
+LinkedIn remains a *profile* connector (the user's own data, via OAuth) in a
+later phase — never a market data source.
 
 ## Report Generation
 * Role map
