@@ -23,9 +23,7 @@ class AccountRepository:
         self._session = session
 
     async def by_auth_subject(self, subject: str) -> Account | None:
-        result = await self._session.execute(
-            select(Account).where(Account.auth_subject == subject)
-        )
+        result = await self._session.execute(select(Account).where(Account.auth_subject == subject))
         return result.scalar_one_or_none()
 
     async def by_id(self, account_id: uuid.UUID) -> Account | None:

@@ -46,9 +46,7 @@ class ObjectStore:
             self._client.create_bucket(Bucket=self._bucket)
 
     def put(self, key: str, body: bytes, content_type: str) -> None:
-        self._client.put_object(
-            Bucket=self._bucket, Key=key, Body=body, ContentType=content_type
-        )
+        self._client.put_object(Bucket=self._bucket, Key=key, Body=body, ContentType=content_type)
 
     def get(self, key: str) -> bytes:
         response = self._client.get_object(Bucket=self._bucket, Key=key)

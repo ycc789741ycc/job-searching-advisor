@@ -30,9 +30,9 @@ def test_cost_scales_with_both_directions_of_tokens() -> None:
 
 
 def test_one_million_input_tokens_costs_the_published_input_rate() -> None:
-    assert pricing.cost_of(
-        "claude-sonnet-5", input_tokens=1_000_000, output_tokens=0
-    ) == Decimal("2.0")
+    assert pricing.cost_of("claude-sonnet-5", input_tokens=1_000_000, output_tokens=0) == Decimal(
+        "2.0"
+    )
 
 
 def test_estimate_reports_whether_the_rate_was_published() -> None:

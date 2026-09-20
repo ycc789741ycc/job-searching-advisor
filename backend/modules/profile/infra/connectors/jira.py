@@ -66,9 +66,7 @@ class JiraConnector:
                 )
             )
 
-            projects = Counter(
-                str(k).split("-", 1)[0] for k in (i.get("key") for i in issues) if k
-            )
+            projects = Counter(str(k).split("-", 1)[0] for k in (i.get("key") for i in issues) if k)
             for project, count in projects.most_common(5):
                 drafts.append(
                     EvidenceDraft(

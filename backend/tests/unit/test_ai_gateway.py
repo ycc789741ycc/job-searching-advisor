@@ -98,9 +98,11 @@ def stub_provider(monkeypatch: pytest.MonkeyPatch):
 def gateway(clean_env: None) -> tuple[AiGateway, StubCredentials, StubBudget]:
     credentials = StubCredentials(encrypt("sk-test-key", context=str(OWNER)))
     budget = StubBudget()
-    return AiGateway(settings=get_settings(), credentials=credentials, budget=budget), (
-        credentials
-    ), budget
+    return (
+        AiGateway(settings=get_settings(), credentials=credentials, budget=budget),
+        (credentials),
+        budget,
+    )
 
 
 TEMPLATE = templates.PromptTemplate(
@@ -142,7 +144,10 @@ async def test_budget_is_checked_before_the_provider_is_called(
 
     with pytest.raises(BudgetExceededError):
         await gw.run(
-            OWNER, task="assess", template=TEMPLATE, inputs={"subject": "x"},
+            OWNER,
+            task="assess",
+            template=TEMPLATE,
+            inputs={"subject": "x"},
             output_schema=Answer,
         )
     assert provider.requests == [], "no money may be spent once the cap is hit"
@@ -156,7 +161,10 @@ async def test_output_that_misses_the_schema_is_retried_then_rejected(
 
     with pytest.raises(OutputInvalidError, match="after 3 attempts"):
         await gw.run(
-            OWNER, task="assess", template=TEMPLATE, inputs={"subject": "x"},
+            OWNER,
+            task="assess",
+            template=TEMPLATE,
+            inputs={"subject": "x"},
             output_schema=Answer,
         )
 
@@ -198,7 +206,10 @@ async def test_a_rejected_key_is_reported_and_pauses_the_user(
 
     with pytest.raises(CredentialFailedError):
         await gw.run(
-            OWNER, task="assess", template=TEMPLATE, inputs={"subject": "x"},
+            OWNER,
+            task="assess",
+            template=TEMPLATE,
+            inputs={"subject": "x"},
             output_schema=Answer,
         )
     assert credentials.failures == ["the provider rejected this API key"]
@@ -224,9 +235,7 @@ async def test_estimate_prices_a_call_without_making_one(
     gw, _, budget = gateway
     provider = stub_provider([])
 
-    estimate = await gw.estimate(
-        OWNER, task="assess", template=TEMPLATE, inputs={"subject": "x"}
-    )
+    estimate = await gw.estimate(OWNER, task="assess", template=TEMPLATE, inputs={"subject": "x"})
 
     assert estimate.cost_usd > 0
     assert estimate.model_id == "claude-opus-5"

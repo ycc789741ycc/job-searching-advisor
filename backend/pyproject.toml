@@ -63,7 +63,12 @@ select = ["E", "F", "I", "N", "UP", "B", "S", "ASYNC", "RUF"]
 ignore = ["S101"]  # assert is how pytest asserts
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S105", "S106"]
+# Test fixtures use literal secrets and literal addresses on purpose, and build
+# queries from table names that are our own constants.
+"tests/**" = ["S104", "S105", "S106", "S608"]
+# FastAPI's dependency and upload declarations are call-in-default by design.
+"modules/*/api.py" = ["B008"]
+"app/dependencies.py" = ["B008"]
 
 [tool.mypy]
 python_version = "3.12"

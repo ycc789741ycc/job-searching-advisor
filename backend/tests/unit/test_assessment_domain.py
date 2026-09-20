@@ -87,9 +87,7 @@ def test_a_genuinely_new_id_is_recorded_as_added() -> None:
 
 
 def test_an_id_that_disappears_is_reported_so_history_is_not_orphaned() -> None:
-    assert dropped_ids({"rel": "Reliability", "old": "Old"}, [dim("rel", "Reliability")]) == {
-        "old"
-    }
+    assert dropped_ids({"rel": "Reliability", "old": "Old"}, [dim("rel", "Reliability")]) == {"old"}
 
 
 # -- follow-up trigger ------------------------------------------------------
@@ -137,27 +135,21 @@ def test_exceeding_one_target_does_not_pay_for_missing_another() -> None:
 
 
 def test_a_gap_is_reported_with_its_size_and_direction() -> None:
-    result = evaluate(
-        user_scores={"lead": 49}, targets=[TargetScore("lead", 88)], uncovered=[]
-    )
+    result = evaluate(user_scores={"lead": 49}, targets=[TargetScore("lead", 88)], uncovered=[])
     gap = result.gaps[0]
     assert gap.delta == -39 and gap.is_gap
     assert result.largest_gaps == (gap,)
 
 
 def test_a_dimension_the_user_does_not_have_scores_as_zero_not_as_absent() -> None:
-    result = evaluate(
-        user_scores={}, targets=[TargetScore("unknown", 80)], uncovered=[]
-    )
+    result = evaluate(user_scores={}, targets=[TargetScore("unknown", 80)], uncovered=[])
     assert result.gaps[0].user_score == 0
     assert result.score == 0
 
 
 def test_an_uncovered_requirement_lowers_fit_rather_than_being_a_footnote() -> None:
     """Someone with narrow evidence must not look like a strong fit."""
-    covered = evaluate(
-        user_scores={"a": 80}, targets=[TargetScore("a", 80)], uncovered=[]
-    )
+    covered = evaluate(user_scores={"a": 80}, targets=[TargetScore("a", 80)], uncovered=[])
     with_hole = evaluate(
         user_scores={"a": 80},
         targets=[TargetScore("a", 80)],

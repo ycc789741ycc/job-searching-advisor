@@ -65,7 +65,8 @@ class GuardedClient:
 
             if len(response.content) > self._max_response_bytes:
                 raise UpstreamFailedError(
-                    "response exceeded the size limit", url=current,
+                    "response exceeded the size limit",
+                    url=current,
                     limit=self._max_response_bytes,
                 )
             return response

@@ -51,9 +51,7 @@ async def fetch_source(
             robots.remember(origin, None)
 
     if not robots.allows(source.endpoint):
-        raise UpstreamFailedError(
-            "robots.txt disallows this endpoint", endpoint=source.endpoint
-        )
+        raise UpstreamFailedError("robots.txt disallows this endpoint", endpoint=source.endpoint)
 
     await limiter.wait(source.endpoint)
     response = await client.request("GET", source.endpoint)
@@ -65,6 +63,27 @@ async def fetch_source(
     company_name = source.company_name or "Unknown"
     payload = response.json() if _looks_like_json(response.text) else response.text
     return adapter.parse(payload, company_name=company_name)
+
+
+async def crawl_one_source(
+    ingest: CrawlIngest,
+    source: CrawlSourceView,
+    *,
+    user_agent: str,
+    timeout_seconds: float,
+    rate_limit_per_second: float,
+) -> CrawlOutcome:
+    """One source, on demand — the rate-limited single-company refresh."""
+    robots = RobotsCache(user_agent)
+    limiter = RateLimiter(per_second=rate_limit_per_second)
+    async with GuardedClient(timeout_seconds=timeout_seconds, user_agent=user_agent) as client:
+        try:
+            postings = await fetch_source(client, source, robots=robots, limiter=limiter)
+        except UpstreamFailedError as exc:
+            await ingest.record_crawl(source.id, [], error=exc.message)
+            return CrawlOutcome(source.id, 0, 0, exc.message)
+    upserted, expired = await ingest.record_crawl(source.id, postings)
+    return CrawlOutcome(source.id, upserted, expired, None)
 
 
 async def crawl_all(
@@ -80,14 +99,10 @@ async def crawl_all(
     limiter = RateLimiter(per_second=rate_limit_per_second)
     outcomes: list[CrawlOutcome] = []
 
-    async with GuardedClient(
-        timeout_seconds=timeout_seconds, user_agent=user_agent
-    ) as client:
+    async with GuardedClient(timeout_seconds=timeout_seconds, user_agent=user_agent) as client:
         for source in sources:
             try:
-                postings = await fetch_source(
-                    client, source, robots=robots, limiter=limiter
-                )
+                postings = await fetch_source(client, source, robots=robots, limiter=limiter)
             except UpstreamFailedError as exc:
                 # One bad board must not stop the run; the source records why.
                 log.warning("crawl.source_failed", source_id=str(source.id), reason=exc.message)
@@ -115,7 +130,8 @@ async def embed_new_postings(ingest: CrawlIngest, model_name: str, batch: int = 
         return 0
     vectors = embed([text for _id, text in pending], model_name=model_name)
     await ingest.store_embeddings(
-        model_name, {posting_id: vector for (posting_id, _), vector in zip(pending, vectors, strict=True)}
+        model_name,
+        {posting_id: vector for (posting_id, _), vector in zip(pending, vectors, strict=True)},
     )
     return len(pending)
 

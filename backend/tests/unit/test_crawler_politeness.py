@@ -78,9 +78,7 @@ async def test_different_hosts_do_not_block_each_other() -> None:
         ("Meridian Labs, Inc.", ["meridianlabsinc", "meridian-labs-inc"]),
     ],
 )
-def test_slug_candidates_cover_the_usual_board_naming(
-    company: str, expected: list[str]
-) -> None:
+def test_slug_candidates_cover_the_usual_board_naming(company: str, expected: list[str]) -> None:
     assert candidate_slugs(company) == expected
 
 

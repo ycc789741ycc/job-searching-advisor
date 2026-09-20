@@ -35,4 +35,5 @@ __all__ = [
     "derive_lineage",
     "dropped_ids",
     "evaluate",
+    "needs_follow_up",
 ]

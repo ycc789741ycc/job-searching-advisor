@@ -19,9 +19,17 @@ _NOISE = re.compile(r"[^a-z0-9 ]+")
 # Decoration that carries no information about which job this is. Stripped so
 # "Senior Backend Engineer (m/f/d)" and "Senior Backend Engineer" are one job.
 _TITLE_NOISE = (
-    r"\(m/f/d\)", r"\(m/w/d\)", r"\(f/m/d\)", r"\(all genders\)", r"\(remote\)",
-    r"\(hybrid\)", r"\(onsite\)", r"\(full[- ]time\)", r"\(part[- ]time\)",
-    r"\(contract\)", r"\(intern\)",
+    r"\(m/f/d\)",
+    r"\(m/w/d\)",
+    r"\(f/m/d\)",
+    r"\(all genders\)",
+    r"\(remote\)",
+    r"\(hybrid\)",
+    r"\(onsite\)",
+    r"\(full[- ]time\)",
+    r"\(part[- ]time\)",
+    r"\(contract\)",
+    r"\(intern\)",
 )
 _TITLE_NOISE_RE = re.compile("|".join(_TITLE_NOISE), re.IGNORECASE)
 
@@ -95,9 +103,7 @@ class NormalizedPosting:
 
     @property
     def canonical_key(self) -> str:
-        return canonical_key(
-            company=self.company_name, title=self.title, location=self.location
-        )
+        return canonical_key(company=self.company_name, title=self.title, location=self.location)
 
     @property
     def embedding_text(self) -> str:

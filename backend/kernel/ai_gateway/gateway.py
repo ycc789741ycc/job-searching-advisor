@@ -18,7 +18,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import TypeVar
 
-from pydantic import BaseModel, ValidationError as PydanticValidationError
+from pydantic import BaseModel
+from pydantic import ValidationError as PydanticValidationError
 
 from kernel.ai_gateway import pricing, templates
 from kernel.ai_gateway.ports import BudgetGuard, CredentialStore, UsageRecord
@@ -116,9 +117,7 @@ class AiGateway:
 
         base_url = credential.base_url or provider.default_base_url
         if not base_url:
-            raise ValidationError(
-                "this provider needs a base URL", provider=credential.provider
-            )
+            raise ValidationError("this provider needs a base URL", provider=credential.provider)
 
         # The key is opened here and lives only for this call.
         api_key = decrypt(credential.encrypted_api_key, context=str(owner_id))
@@ -290,7 +289,7 @@ class AiGateway:
         )
 
 
-def _parse(text: str, schema: type[T]) -> T:
+def _parse[TOut: BaseModel](text: str, schema: type[TOut]) -> TOut:
     """Turn model output into a validated object, or reject it.
 
     Output is untrusted like any other external text, so nothing is used before

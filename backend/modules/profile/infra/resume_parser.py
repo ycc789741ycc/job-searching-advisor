@@ -35,9 +35,7 @@ class ParsedResume:
     drafts: list[EvidenceDraft]
 
 
-def parse(
-    content: bytes, *, content_type: str, filename: str, max_pages: int
-) -> ParsedResume:
+def parse(content: bytes, *, content_type: str, filename: str, max_pages: int) -> ParsedResume:
     if content_type not in ACCEPTED_TYPES:
         raise ValidationError(
             f"{content_type} is not a resume format we can read", content_type=content_type

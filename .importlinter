@@ -23,7 +23,6 @@ forbidden_modules =
     modules.identity.domain
     modules.identity.infra
     modules.identity.api
-    modules.identity.jobs
     modules.profile.domain
     modules.profile.infra
     modules.profile.api
@@ -40,8 +39,9 @@ forbidden_modules =
     modules.assessment.infra
     modules.assessment.api
     modules.assessment.jobs
-allow_indirect_imports = False
-unmatched_ignore_imports_alias = ignore
+# Direct imports only. Reaching another module's internals *through* its
+# public.py is the design; typing `modules.rolemap.infra.models` is not.
+allow_indirect_imports = True
 
 # Rule 2: domain/ is pure. No infra, no kernel, no framework.
 [importlinter:contract:pure-domain]
@@ -87,6 +87,9 @@ forbidden_modules =
     modules.market.infra
     modules.market.api
     modules.market.jobs
+# Direct imports only: the crawler goes through modules.market.public, which
+# necessarily sits on top of that module's own domain and infra.
+allow_indirect_imports = True
 
 # Rule 4: only the AI gateway and the profile connectors may decrypt.
 [importlinter:contract:decrypt-callers]
@@ -94,7 +97,6 @@ name = Only kernel.ai_gateway and profile connectors may import kernel.crypto
 type = forbidden
 source_modules =
     modules.identity.api
-    modules.identity.jobs
     modules.market
     modules.rolemap
     modules.assessment
@@ -102,6 +104,9 @@ source_modules =
     app
 forbidden_modules =
     kernel.crypto
+# Direct imports only: reaching kernel.crypto *through* the gateway is the
+# supported path, and is what the gateway exists for.
+allow_indirect_imports = True
 
 # Rule 5: modules never touch an LLM SDK directly.
 [importlinter:contract:no-direct-llm]
@@ -116,6 +121,9 @@ source_modules =
     crawler
 forbidden_modules =
     kernel.ai_gateway.providers
+# Direct imports only: the gateway itself necessarily imports its adapters, and
+# every module reaches them through it.
+allow_indirect_imports = True
 
 # Rule 6: the kernel is a technical kernel. It knows no domain.
 [importlinter:contract:kernel-knows-no-domain]

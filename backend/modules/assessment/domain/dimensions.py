@@ -74,9 +74,7 @@ def assert_ids_unique(dimensions: list[DimensionScore]) -> None:
         raise ValueError(f"dimension ids must be unique; repeated: {duplicated}")
 
 
-def derive_lineage(
-    previous: dict[str, str], current: list[DimensionScore]
-) -> list[LineageEntry]:
+def derive_lineage(previous: dict[str, str], current: list[DimensionScore]) -> list[LineageEntry]:
     """Work out what changed between two assessments.
 
     ``previous`` maps dimension id to its name at the time. A reused id whose
@@ -108,9 +106,7 @@ def dropped_ids(previous: dict[str, str], current: list[DimensionScore]) -> set[
     return set(previous) - {d.dimension_id for d in current}
 
 
-def needs_follow_up(
-    dimensions: list[DimensionScore], *, threshold: float
-) -> list[DimensionScore]:
+def needs_follow_up(dimensions: list[DimensionScore], *, threshold: float) -> list[DimensionScore]:
     """The domain rule for "the context is not enough".
 
     A dimension below the confidence threshold is what triggers follow-up

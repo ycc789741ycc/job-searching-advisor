@@ -8,7 +8,6 @@ import pytest
 
 from modules.rolemap.domain import BarBasis, RoleChange, blend, overlap, reconcile
 
-
 # -- hiring bar -------------------------------------------------------------
 
 
@@ -46,8 +45,13 @@ def test_a_full_sample_is_reported_not_blended() -> None:
 
 
 def test_the_bar_stays_on_the_scale() -> None:
-    assert blend(estimated=180, estimate_confidence=0.2, reported=None, reporter_count=0).value == 100
-    assert blend(estimated=-40, estimate_confidence=0.2, reported=None, reporter_count=0).value == 0
+    def bar(value: int) -> int:
+        return blend(
+            estimated=value, estimate_confidence=0.2, reported=None, reporter_count=0
+        ).value
+
+    assert bar(180) == 100
+    assert bar(-40) == 0
 
 
 # -- role identity ----------------------------------------------------------
@@ -74,9 +78,7 @@ def test_a_cluster_that_gains_a_posting_is_still_the_same_role() -> None:
 
 def test_a_genuinely_new_group_gets_a_new_id() -> None:
     previous = {"srbe": {"a", "b", "c"}}
-    result = reconcile(
-        previous=previous, clusters=[{"a", "b", "c"}, {"p", "q", "r"}], new_id=ids()
-    )
+    result = reconcile(previous=previous, clusters=[{"a", "b", "c"}, {"p", "q", "r"}], new_id=ids())
     assert result.assignments[0] == "srbe"
     assert result.assignments[1] == "new-1"
     assert [e.kind for e in result.lineage] == [RoleChange.ADDED]
@@ -121,7 +123,12 @@ def test_the_first_clustering_gives_every_role_a_new_id() -> None:
 
 @pytest.mark.parametrize(
     ("left", "right", "expected"),
-    [({"a"}, {"a"}, 1.0), ({"a"}, {"b"}, 0.0), ({"a", "b"}, {"b", "c"}, 1 / 3), (set(), set(), 0.0)],
+    [
+        ({"a"}, {"a"}, 1.0),
+        ({"a"}, {"b"}, 0.0),
+        ({"a", "b"}, {"b", "c"}, 1 / 3),
+        (set(), set(), 0.0),
+    ],
 )
 def test_overlap_is_jaccard(left: set[str], right: set[str], expected: float) -> None:
     assert overlap(left, right) == pytest.approx(expected)

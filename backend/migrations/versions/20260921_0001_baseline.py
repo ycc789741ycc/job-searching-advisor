@@ -97,6 +97,24 @@ def upgrade() -> None:
         f"            OR id::text = current_setting('{_APP_USER}', true))"
     )
 
+    # --- the one deliberate cross-user read --------------------------------
+    #
+    # When the crawler reports that a company's postings changed, something has
+    # to work out which users watch that company. The crawler cannot: it has no
+    # grant on any user schema, and that is the point. So the fan-out happens in
+    # the worker's outbox dispatcher, which needs to read two columns across all
+    # users.
+    #
+    # Rather than give app_rw BYPASSRLS, these two tables get an extra
+    # SELECT-only policy gated on a transaction setting the dispatcher sets and
+    # nothing else does. It is narrow, it is greppable, and it cannot be used to
+    # read evidence, credentials, assessments or pasted JDs.
+    for table in ("company_subscription", "market_preference"):
+        op.execute(
+            f"CREATE POLICY fanout_read ON market_user.{table} FOR SELECT "
+            "USING (current_setting('app.fanout', true) = 'on')"
+        )
+
     # --- indexes that only make sense as raw DDL ---------------------------
     op.execute(
         "CREATE INDEX ix_posting_embedding_vector ON market.posting_embedding "
@@ -107,6 +125,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     bind = op.get_bind()
     op.execute("DROP INDEX IF EXISTS market.ix_posting_embedding_vector")
+    for table in ("company_subscription", "market_preference"):
+        op.execute(f"DROP POLICY IF EXISTS fanout_read ON market_user.{table}")
     for qualified in (*OWNER_ZONE_TABLES, "identity.account"):
         schema, _, table = qualified.partition(".")
         op.execute(f'DROP POLICY IF EXISTS owner_isolation ON "{schema}"."{table}"')

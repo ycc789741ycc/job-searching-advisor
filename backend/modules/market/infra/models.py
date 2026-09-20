@@ -65,9 +65,7 @@ class CrawlSource(Base, TimestampMixin):
     market: Mapped[str | None] = mapped_column(String(128), nullable=True)
     endpoint: Mapped[str] = mapped_column(String(1024), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="active")
-    last_fetched_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
@@ -183,9 +181,7 @@ class PrivateJobPosting(Base, OwnedMixin, TimestampMixin):
     # One-way link to a matching crawled posting, so the user gets weekly
     # updates. Nothing ever flows back the other way.
     shared_posting_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
-    vector: Mapped[list[float] | None] = mapped_column(
-        Vector(EMBEDDING_DIMENSIONS), nullable=True
-    )
+    vector: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIMENSIONS), nullable=True)
 
 
 class ManualRefreshLog(Base, OwnedMixin):

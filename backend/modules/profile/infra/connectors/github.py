@@ -10,8 +10,8 @@ from collections import Counter
 from typing import Any
 
 from kernel.errors import UpstreamFailedError
-from kernel.parsing import parse_date
 from kernel.fetch import GuardedClient
+from kernel.parsing import parse_date
 from modules.profile.infra.connectors.base import EvidenceDraft
 
 SCOPES = ("read:user", "repo:status", "public_repo")

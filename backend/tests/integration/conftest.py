@@ -51,11 +51,10 @@ async def database(settings: Settings) -> AsyncIterator[Database]:
     try:
         async with db.shared() as session:
             await session.execute(text("SELECT 1"))
-    except Exception as exc:  # noqa: BLE001 - the message is the point
+    except Exception as exc:
         await db.dispose()
         pytest.fail(
-            f"could not reach Postgres ({exc.__class__.__name__}). "
-            "Run `make start-infra` first.",
+            f"could not reach Postgres ({exc.__class__.__name__}). Run `make start-infra` first.",
             pytrace=False,
         )
     yield db

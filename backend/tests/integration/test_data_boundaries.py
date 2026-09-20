@@ -67,7 +67,7 @@ async def test_a_user_cannot_write_a_row_owned_by_someone_else(
     database: Database, account: uuid.UUID, other_account: uuid.UUID
 ) -> None:
     """WITH CHECK stops a forged owner_id, not just a forged read."""
-    with pytest.raises(Exception, match="row-level security|violates"):
+    with pytest.raises(Exception, match=r"row-level security|violates"):
         async with database.for_user(account) as session:
             await session.execute(
                 text(
@@ -84,10 +84,7 @@ async def test_every_owner_zone_table_actually_has_the_policy(database: Database
     """A new table added without RLS is the failure mode this catches."""
     async with database.shared() as session:
         rows = await session.execute(
-            text(
-                "SELECT schemaname || '.' || tablename FROM pg_tables "
-                "WHERE rowsecurity IS TRUE"
-            )
+            text("SELECT schemaname || '.' || tablename FROM pg_tables WHERE rowsecurity IS TRUE")
         )
         protected = {row for row in rows.scalars()}
     missing = set(OWNER_ZONE_TABLES) - protected
@@ -113,7 +110,7 @@ async def test_the_crawler_role_cannot_touch_user_data(crawler_engine, table: st
     mistake.
     """
     async with crawler_engine.connect() as connection:
-        with pytest.raises(Exception, match="permission denied|does not exist"):
+        with pytest.raises(Exception, match=r"permission denied|does not exist"):
             await connection.execute(text(f"SELECT count(*) FROM {table}"))
 
 

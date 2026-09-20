@@ -74,9 +74,7 @@ class Settings(BaseSettings):
     parse_timeout_seconds: int = Field(default=60, alias="PARSE_TIMEOUT_SECONDS")
 
     # --- Crawler ------------------------------------------------------------
-    crawl_user_agent: str = Field(
-        default="JobSearchingAdvisorBot/1.0", alias="CRAWL_USER_AGENT"
-    )
+    crawl_user_agent: str = Field(default="JobSearchingAdvisorBot/1.0", alias="CRAWL_USER_AGENT")
     crawl_http_timeout_seconds: int = Field(default=30, alias="CRAWL_HTTP_TIMEOUT_SECONDS")
     crawl_rate_limit_per_host_per_second: float = Field(
         default=1.0, alias="CRAWL_RATE_LIMIT_PER_HOST_PER_SECOND"

@@ -28,6 +28,7 @@ from modules.market.domain import (
     Coverage,
     NormalizedPosting,
     PostingStatus,
+    SalaryBand,
     SalaryRange,
     SourceKind,
     Visibility,
@@ -55,9 +56,11 @@ __all__ = [
     "NormalizedPosting",
     "PostingStatus",
     "PostingView",
+    "SalaryBand",
     "SalaryRange",
     "SourceKind",
     "Visibility",
+    "band_from",
     "canonical_key",
 ]
 
@@ -157,9 +160,9 @@ class CrawlIngest:
             )
             return (len(seen_keys), expired)
 
-    async def postings_needing_embeddings(self, model_name: str, limit: int = 200) -> list[
-        tuple[uuid.UUID, str]
-    ]:
+    async def postings_needing_embeddings(
+        self, model_name: str, limit: int = 200
+    ) -> list[tuple[uuid.UUID, str]]:
         async with self._db.shared() as session:
             rows = await session.execute(
                 select(JobPosting.id, JobPosting.title, JobPosting.location, JobPosting.description)
@@ -172,7 +175,14 @@ class CrawlIngest:
                 .limit(limit)
             )
             return [
-                (row.id, "\n".join(p for p in (row.title, row.title, row.location, row.description) if p))
+                (
+                    row.id,
+                    "\n".join(
+                        part
+                        for part in (row.title, row.title, row.location, row.description)
+                        if part
+                    ),
+                )
                 for row in rows.all()
             ]
 
@@ -280,9 +290,7 @@ class MarketService:
             )
             if existing.scalar_one_or_none() is None:
                 session.add(MarketPreference(owner_id=owner_id, market=value))
-                await emit(
-                    session, EventName.MARKET_SELECTED, {"market": value}, owner_id=owner_id
-                )
+                await emit(session, EventName.MARKET_SELECTED, {"market": value}, owner_id=owner_id)
         return await self.markets(owner_id)
 
     async def remove_market(self, owner_id: uuid.UUID, market: str) -> list[str]:
@@ -378,6 +386,60 @@ class MarketService:
 
         return shared_rows + await self.private_postings(owner_id)
 
+    async def scope_with_vectors(
+        self, owner_id: uuid.UUID, model_name: str
+    ) -> list[tuple[str, PostingView, list[float] | None]]:
+        """Every posting in this user's scope, with its embedding where one exists.
+
+        Shared postings were embedded by the crawler. Pasted JDs have not been,
+        so they come back with ``None`` and the caller embeds them — that stays
+        platform-paid computation, never the user's key.
+
+        The key is the posting's stable identity for clustering: the shared id,
+        or ``private:<id>`` for a pasted JD.
+        """
+        postings = await self.postings_in_scope(owner_id)
+        shared_ids = [p.id for p in postings if p.visibility is Visibility.SHARED]
+
+        vectors: dict[uuid.UUID, list[float]] = {}
+        if shared_ids:
+            async with self._db.shared() as session:
+                rows = await session.execute(
+                    select(PostingEmbedding.job_posting_id, PostingEmbedding.vector).where(
+                        PostingEmbedding.job_posting_id.in_(shared_ids),
+                        PostingEmbedding.model_name == model_name,
+                    )
+                )
+                vectors = {row[0]: list(row[1]) for row in rows.all()}
+
+        async with self._db.for_user(owner_id) as session:
+            private_rows = await session.execute(
+                select(PrivateJobPosting.id, PrivateJobPosting.vector).where(
+                    PrivateJobPosting.owner_id == owner_id,
+                    PrivateJobPosting.vector.is_not(None),
+                )
+            )
+            for posting_id, vector in private_rows.all():
+                vectors[posting_id] = list(vector)
+
+        return [
+            (
+                f"private:{p.id}" if p.visibility is Visibility.PRIVATE else str(p.id),
+                p,
+                vectors.get(p.id),
+            )
+            for p in postings
+        ]
+
+    async def store_private_vectors(
+        self, owner_id: uuid.UUID, vectors: dict[uuid.UUID, list[float]]
+    ) -> None:
+        async with self._db.for_user(owner_id) as session:
+            for posting_id, vector in vectors.items():
+                posting = await session.get(PrivateJobPosting, posting_id)
+                if posting is not None and posting.owner_id == owner_id:
+                    posting.vector = vector
+
     async def request_manual_refresh(self, owner_id: uuid.UUID, company_id: uuid.UUID) -> None:
         """Re-crawl one watched company now, within a per-day cap.
 
@@ -426,9 +488,7 @@ def _any_of(conditions: list[object]) -> object:
 
 async def _ensure_company(session: AsyncSession, name: str) -> Company:
     normalized = normalize(name)
-    existing = await session.execute(
-        select(Company).where(Company.normalized_name == normalized)
-    )
+    existing = await session.execute(select(Company).where(Company.normalized_name == normalized))
     company = existing.scalar_one_or_none()
     if company is None:
         company = Company(name=name.strip(), normalized_name=normalized)
@@ -481,9 +541,7 @@ async def _upsert_posting(
         row.salary_currency = posting.salary.currency
 
 
-async def _expire_unseen(
-    session: AsyncSession, source_id: uuid.UUID, seen_keys: set[str]
-) -> int:
+async def _expire_unseen(session: AsyncSession, source_id: uuid.UUID, seen_keys: set[str]) -> int:
     """A posting missing from a crawl is marked expired, never deleted."""
     query = (
         update(JobPosting)

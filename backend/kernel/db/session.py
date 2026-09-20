@@ -12,7 +12,12 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.sql import text
 
 from kernel.config import Settings
@@ -56,6 +61,19 @@ class Database:
                 text(f"SELECT set_config('{_APP_USER_SETTING}', :uid, true)"),
                 {"uid": str(owner_id)},
             )
+            yield session
+
+    @asynccontextmanager
+    async def fanout(self) -> AsyncIterator[AsyncSession]:
+        """A transaction allowed to read *which* users watch a company or market.
+
+        This is the only cross-user read in the system. It exists because the
+        crawler must not know who its work is for, so the worker resolves that
+        afterwards. The policy behind this setting covers two columns on two
+        tables and nothing else.
+        """
+        async with self._sessionmaker() as session, session.begin():
+            await session.execute(text("SELECT set_config('app.fanout', 'on', true)"))
             yield session
 
     @asynccontextmanager

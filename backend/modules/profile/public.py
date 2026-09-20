@@ -23,9 +23,11 @@ from kernel.storage import ObjectStore, object_key
 from modules.profile.domain import (
     CitationError,
     EvidenceSource,
-    Position as PositionValue,
     assert_citations_exist,
     total_experience_months,
+)
+from modules.profile.domain import (
+    Position as PositionValue,
 )
 from modules.profile.infra.connectors import Connector, EvidenceDraft
 from modules.profile.infra.models import (
@@ -293,9 +295,7 @@ class ProfileService:
 
     async def resumes(self, owner_id: uuid.UUID) -> list[ResumeFileView]:
         async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(ResumeFile).where(ResumeFile.owner_id == owner_id)
-            )
+            rows = await session.execute(select(ResumeFile).where(ResumeFile.owner_id == owner_id))
             return [_resume_view(row) for row in rows.scalars()]
 
     async def resume_download_url(self, owner_id: uuid.UUID, resume_id: uuid.UUID) -> str:
@@ -364,9 +364,7 @@ class ProfileService:
     async def evidence_ids(self, owner_id: uuid.UUID) -> set[str]:
         """Used to reject AI output citing evidence this user does not have."""
         async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(Evidence.id).where(Evidence.owner_id == owner_id)
-            )
+            rows = await session.execute(select(Evidence.id).where(Evidence.owner_id == owner_id))
             return {str(row) for row in rows.scalars()}
 
     # -- internals ----------------------------------------------------------

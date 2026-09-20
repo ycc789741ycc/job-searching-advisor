@@ -32,7 +32,9 @@ def total_experience_months(positions: list[Position], *, as_of: date) -> int:
         return 0
 
     spans = sorted(
-        (p.started_on, p.ended_on or as_of) for p in positions if (p.ended_on or as_of) >= p.started_on
+        (p.started_on, p.ended_on or as_of)
+        for p in positions
+        if (p.ended_on or as_of) >= p.started_on
     )
     merged: list[tuple[date, date]] = []
     for start, end in spans:
