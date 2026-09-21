@@ -20,19 +20,46 @@ The design guideline at `/Users/yoshi/repo/design-guideline` applies here too.
 
 ## Running it
 
+Everything runs in a container. Install Docker and `make` — nothing else. There
+is no Python, Node, `psql`, linter or migration CLI to put on your machine, and
+a bare `npm`/`pip`/`pytest`/`alembic` anywhere in this repo means a target is
+missing.
+
 ```
 cp .env.example .env      # fill in every blank; nothing has a default that matters
-make build-infra && make build-app
-make start-infra          # Postgres + MinIO, then the least-privilege DB roles
-make start-app            # runs migrations to completion first, then api/worker/crawler
+make build-infra          # pull the pinned Postgres and MinIO images
+make build-app            # build the app image, the SPA image, and the tools layers
+make start-infra          # compose up, wait healthy, then the least-privilege DB roles
+make start-app            # runs migrations to completion first, then api/worker/crawler/web
 ```
 
-`make test-unit` is hermetic — it passes on a clean checkout with nothing
-running. `make test-integration` assumes infra is up and migrated, and tells you
-to run `make start-infra` if it is not. Narrow either with `PATTERN=`.
+Hostnames in `.env` are compose service names on the `jsa_net` network, not
+`localhost`. The only host-facing values are the `*_PUBLISHED_PORT` numbers,
+which are what your browser and any database client connect to.
 
-Supporting targets, never dependencies of the above: `migrate`, `lint`, `scan`,
-`gen-client`, and `reset-data` (the only destructive one).
+`make test-unit` runs in a container with `--network none`, so it is hermetic by
+construction rather than by convention. `make test-integration` runs on the
+compose network and assumes infra is up and migrated — it tells you to run
+`make start-infra` if it is not. Narrow either with `PATTERN=`.
+
+`make lint`, `make typecheck` and `make scan` are their own gates, never folded
+into a test target. `scan` covers Python dependencies, npm dependencies, and the
+application image itself.
+
+Supporting targets, never dependencies of the above: `migrate`, `format`,
+`gen-client`, `lock` (regenerates `backend/uv.lock` after a dependency change),
+`logs`, and `reset-data` (the only destructive one). `format` and the two
+generators are the only targets that mount source, because they write back to
+it; the gates and both test tiers never do.
+
+Infra and the app are separate compose projects (`jsa-infra`, `jsa-app`) sharing
+the `jsa_net` network, so an app target can never remove an infra container.
+
+Images are pinned by version — never `latest` — in the `Dockerfile`s and compose
+files. Configuration arrives at run time through `--env-file`, so `build-app`
+produces one artifact that is promoted unchanged; the SPA gets its settings from
+a `config.js` the container writes at start, which is why there are no `VITE_`
+variables.
 
 ## Shape of the code
 
@@ -51,7 +78,7 @@ backend/
 web/          React + Vite SPA
 ```
 
-Six `import-linter` contracts in `.importlinter` enforce those boundaries, and
+Six `import-linter` contracts in `backend/.importlinter` enforce those boundaries, and
 they run in CI. If one breaks, the design is wrong, not the contract.
 
 ## Things that are deliberate

@@ -1,10 +1,5 @@
 /// <reference types="vite/client" />
 
-interface ImportMetaEnv {
-  readonly VITE_API_BASE_URL: string;
-  readonly VITE_CLERK_PUBLISHABLE_KEY: string;
-}
-
-interface ImportMeta {
-  readonly env: ImportMetaEnv;
-}
+// Runtime configuration lives in src/config.ts, read from window.__APP_CONFIG__.
+// There are deliberately no VITE_ variables: inlining configuration at build
+// time would mean a different artifact per environment.

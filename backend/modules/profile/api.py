@@ -14,12 +14,21 @@ from pydantic import BaseModel, Field
 
 from app.dependencies import CurrentUser, Deps
 from app.queue import enqueue
+from kernel.config import Settings, must
 from kernel.fetch import GuardedClient
 from modules.profile.infra.connectors import github as github_connector
 from modules.profile.infra.connectors import jira as jira_connector
 from modules.profile.infra.oauth import authorize_url, exchange_code, sign_state, verify_state
 
 router = APIRouter(tags=["profile"])
+
+
+def _redirect_uri(settings: Settings, kind: str) -> str:
+    """Built explicitly, because an f-string over an unset value would quietly
+    produce "None/connections/..." and fail at the provider instead of here."""
+    base = must(settings.oauth_redirect_base_url, "OAUTH_REDIRECT_BASE_URL")
+    return f"{base}/connections/{kind}/callback"
+
 
 SCOPE_COPY = {
     "github": github_connector.SCOPE_DESCRIPTIONS,
@@ -62,13 +71,15 @@ async def start_authorization(kind: str, user: CurrentUser, deps: Deps) -> dict[
     settings = deps.settings
     secret = settings.require_master_key().get_secret_value()
     client_id = (
-        settings.github_oauth_client_id if kind == "github" else settings.jira_oauth_client_id
+        must(settings.github_oauth_client_id, "GITHUB_OAUTH_CLIENT_ID")
+        if kind == "github"
+        else must(settings.jira_oauth_client_id, "JIRA_OAUTH_CLIENT_ID")
     )
     return {
         "url": authorize_url(
             kind,
             client_id=client_id,
-            redirect_uri=f"{settings.oauth_redirect_base_url}/connections/{kind}/callback",
+            redirect_uri=_redirect_uri(settings, kind),
             state=sign_state(user, kind, secret=secret),
         )
     }
@@ -87,9 +98,15 @@ async def complete_authorization(
         raise ForbiddenError("this authorization was started by someone else")
 
     client_id, client_secret = (
-        (settings.github_oauth_client_id, settings.github_oauth_client_secret)
+        (
+            must(settings.github_oauth_client_id, "GITHUB_OAUTH_CLIENT_ID"),
+            must(settings.github_oauth_client_secret, "GITHUB_OAUTH_CLIENT_SECRET"),
+        )
         if kind == "github"
-        else (settings.jira_oauth_client_id, settings.jira_oauth_client_secret)
+        else (
+            must(settings.jira_oauth_client_id, "JIRA_OAUTH_CLIENT_ID"),
+            must(settings.jira_oauth_client_secret, "JIRA_OAUTH_CLIENT_SECRET"),
+        )
     )
 
     async with GuardedClient(
@@ -101,7 +118,7 @@ async def complete_authorization(
             code=body.code,
             client_id=client_id,
             client_secret=client_secret.get_secret_value(),
-            redirect_uri=f"{settings.oauth_redirect_base_url}/connections/{kind}/callback",
+            redirect_uri=_redirect_uri(settings, kind),
         )
 
     connection = await deps.profile.store_connection(

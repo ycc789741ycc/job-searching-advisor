@@ -1,5 +1,7 @@
-# The pipeline runs the same `make` targets a developer runs — no CI-only
-# commands, and infra before app, with migrations as their own step.
+# The pipeline runs the same `make` targets a developer runs, in the same order.
+#
+# It installs no language toolchain: every step is a container, so what runs here
+# and what runs on a laptop are the same images with the same pinned versions.
 name: CI
 
 on:
@@ -10,35 +12,29 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
 
       - name: Create the environment file
         # Every environment supplies the same variable names from .env.example,
         # only the values differ. CI is no exception.
         run: ./.github/workflows/ci-env.sh
 
-      - name: Lint and typecheck
-        run: make lint
-
-      - name: Unit tests
-        # Hermetic: nothing is running yet, and that is the point.
-        run: make test-unit
-
       - run: make build-infra
       - run: make build-app
+
+      - name: Lint
+        run: make lint
+
+      - name: Typecheck
+        run: make typecheck
+
+      - name: Unit tests
+        # Hermetic: infra is not up yet, and the containers run with no network.
+        run: make test-unit
+
       - run: make start-infra
       - run: make migrate
 
@@ -48,11 +44,15 @@ jobs:
       - name: Check the generated API client is current
         run: |
           make gen-client
-          git diff --exit-code web/src/api/ \
+          git diff --exit-code web/src/api/schema.d.ts \
             || { echo "The API contract changed. Run 'make gen-client' and commit."; exit 1; }
 
-      - name: Dependency scan
+      - name: Dependency and image scan
         run: make scan
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: make logs || true
 
       - name: Stop
         if: always()

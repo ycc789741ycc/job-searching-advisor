@@ -1,4 +1,6 @@
-# Module boundaries from docs/technical_boundaries.md section 2, enforced in CI.
+# Module boundaries from docs/technical_boundaries.md section 2, enforced in CI
+# by `make lint`. It lives here so it ships inside the tools image and the gate
+# mounts nothing from the host.
 # A violation here is a design defect, not a style nit.
 
 [importlinter]

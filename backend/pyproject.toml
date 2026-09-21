@@ -32,6 +32,10 @@ dependencies = [
   "python-docx>=1.1",
   # Local ML: embeddings + clustering. Platform-paid, never the user's key.
   "sentence-transformers>=3.3",
+  # Declared explicitly so it can be pinned to the CPU-only wheel index below.
+  # The default PyPI wheel bundles the NVIDIA CUDA runtime, which adds roughly
+  # six gigabytes to a Linux image for hardware we never use.
+  "torch>=2.5",
   "scikit-learn>=1.5",
   "numpy>=1.26",
   # Logging
@@ -52,6 +56,14 @@ dev = [
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.ruff]
 line-length = 100
@@ -93,6 +105,8 @@ warn_return_any = false
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+# Outside the source tree, so a test run never writes into /app.
+cache_dir = "/tmp/pytest_cache"
 asyncio_mode = "auto"
 addopts = "-q --strict-markers"
 markers = ["integration: needs infra already up and migrated"]

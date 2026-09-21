@@ -1,4 +1,10 @@
-import { SignedIn, SignedOut, SignIn, UserButton, useAuth } from "@clerk/clerk-react";
+import {
+  SignedIn,
+  SignedOut,
+  SignIn,
+  UserButton,
+  useAuth,
+} from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
 import { api, useTokenSource } from "./api/client";
 import type { Me } from "./api/types";
@@ -32,7 +38,10 @@ export function App() {
         >
           <div style={{ textAlign: "center" }}>
             <h1>Job Searching Advisor</h1>
-            <p className="secondary" style={{ maxWidth: 420, margin: "0 auto 24px" }}>
+            <p
+              className="secondary"
+              style={{ maxWidth: 420, margin: "0 auto 24px" }}
+            >
               Turn the work you have actually done into a picture of where you
               stand and what to aim at next.
             </p>
@@ -55,7 +64,10 @@ function Shell() {
   useTokenSource(() => getToken());
 
   useEffect(() => {
-    void api.get<Me>("/me").then(setMe).catch(() => setMe(null));
+    void api
+      .get<Me>("/me")
+      .then(setMe)
+      .catch(() => setMe(null));
   }, []);
 
   return (
@@ -79,8 +91,12 @@ function Shell() {
               aria-current={screen === item.id ? "page" : undefined}
               style={{
                 border: "none",
-                background: screen === item.id ? "var(--surface-1)" : "transparent",
-                color: screen === item.id ? "var(--text-primary)" : "var(--text-secondary)",
+                background:
+                  screen === item.id ? "var(--surface-1)" : "transparent",
+                color:
+                  screen === item.id
+                    ? "var(--text-primary)"
+                    : "var(--text-secondary)",
                 borderBottom:
                   screen === item.id
                     ? "2px solid var(--series-1)"
@@ -104,7 +120,11 @@ function Shell() {
         <p
           role="alert"
           className="card"
-          style={{ color: "var(--status-critical)", fontSize: 13.5, marginBottom: 16 }}
+          style={{
+            color: "var(--status-critical)",
+            fontSize: 13.5,
+            marginBottom: 16,
+          }}
         >
           <span aria-hidden="true">⚠</span> Background work is paused:{" "}
           {me.paused_reason}. Your reports will go out of date until this is

@@ -13,7 +13,7 @@ import contextlib
 from app.container import container
 from app.dispatcher import dispatch_pending
 from app.queue import queue
-from kernel.config import get_settings
+from kernel.config import Unit, get_settings
 from kernel.jobs import Queue
 from kernel.logging import configure_logging, get_logger
 
@@ -37,6 +37,8 @@ async def _dispatch_loop() -> None:
 async def main() -> None:
     settings = get_settings()
     configure_logging(f"{settings.service_name}-worker", settings.log_level)
+    # Missing configuration fails here, at startup, not at first use.
+    settings.require_for(Unit.WORKER)
     app = queue()
 
     async with app.open_async():

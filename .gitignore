@@ -16,8 +16,7 @@ __pycache__/
 node_modules/
 web/dist/
 
-# Local data & artifacts
-.local/
+# Local artifacts
 *.log
 .DS_Store
 

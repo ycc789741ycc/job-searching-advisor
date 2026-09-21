@@ -41,8 +41,8 @@ export function Clarify() {
       <ErrorNote error={error} />
       {answered > 0 && (
         <p style={{ color: "var(--status-good)", fontSize: 13.5 }}>
-          <span aria-hidden="true">✓</span> {answered} answered — your analysis is
-          re-running.
+          <span aria-hidden="true">✓</span> {answered} answered — your analysis
+          is re-running.
         </p>
       )}
 

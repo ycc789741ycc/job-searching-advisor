@@ -30,14 +30,20 @@ const RINGS = [25, 50, 75, 100];
  * has to lay out whatever it is given. One series needs no legend — the title
  * names it; a target overlay makes two, and then the legend appears.
  */
-export function SkillRadar({ dimensions, target, onSelect, selectedKey }: Props) {
+export function SkillRadar({
+  dimensions,
+  target,
+  onSelect,
+  selectedKey,
+}: Props) {
   const [hovered, setHovered] = useState<number | null>(null);
   const titleId = useId();
 
   if (dimensions.length === 0) {
     return (
       <p className="muted">
-        No dimensions yet. Connect a source and run an analysis to see your radar.
+        No dimensions yet. Connect a source and run an analysis to see your
+        radar.
       </p>
     );
   }
@@ -76,7 +82,13 @@ export function SkillRadar({ dimensions, target, onSelect, selectedKey }: Props)
             />
           ))}
           {dimensions.map((dimension, index) => {
-            const edge = radarPoint(100, index, dimensions.length, RADIUS, CENTRE);
+            const edge = radarPoint(
+              100,
+              index,
+              dimensions.length,
+              RADIUS,
+              CENTRE,
+            );
             return (
               <line
                 key={dimension.key}
@@ -179,7 +191,8 @@ export function SkillRadar({ dimensions, target, onSelect, selectedKey }: Props)
           <div className="tooltip" style={{ left: 12, top: 12 }}>
             <strong>{active.name}</strong>
             <div className="secondary">
-              {active.score}/100 · confidence {(active.confidence * 100).toFixed(0)}%
+              {active.score}/100 · confidence{" "}
+              {(active.confidence * 100).toFixed(0)}%
             </div>
             <div className="muted" style={{ marginTop: 4 }}>
               {active.read}
@@ -189,7 +202,10 @@ export function SkillRadar({ dimensions, target, onSelect, selectedKey }: Props)
       </div>
 
       {target && (
-        <div className="legend" style={{ justifyContent: "center", marginTop: 8 }}>
+        <div
+          className="legend"
+          style={{ justifyContent: "center", marginTop: 8 }}
+        >
           <span className="legend-item">
             <span
               className="legend-swatch"

@@ -12,7 +12,10 @@ import { messageOf, useAsync } from "./useAsync";
  * waits for a yes.
  */
 export function Strengths() {
-  const assessment = useAsync<Assessment | null>(() => api.get("/assessments/latest"), []);
+  const assessment = useAsync<Assessment | null>(
+    () => api.get("/assessments/latest"),
+    [],
+  );
   const evidence = useAsync<Evidence[]>(() => api.get("/evidence"), []);
   const [estimate, setEstimate] = useState<CostEstimate | null>(null);
   const [busy, setBusy] = useState(false);
@@ -72,8 +75,9 @@ export function Strengths() {
           <h1>Your strengths</h1>
           {assessment.data && (
             <p className="muted" style={{ fontSize: 13, margin: 0 }}>
-              From profile version {assessment.data.profile_version} · {assessment.data.model_id} ·
-              prompt {assessment.data.template_version} ·{" "}
+              From profile version {assessment.data.profile_version} ·{" "}
+              {assessment.data.model_id} · prompt{" "}
+              {assessment.data.template_version} ·{" "}
               {new Date(assessment.data.created_at).toLocaleString()}
             </p>
           )}
@@ -154,7 +158,9 @@ export function Strengths() {
                     const item = byId.get(id);
                     return (
                       <li key={id} style={{ marginBottom: 6 }}>
-                        <span className="muted">{item?.reference ?? "evidence"}</span>
+                        <span className="muted">
+                          {item?.reference ?? "evidence"}
+                        </span>
                         {item ? ` — ${item.fact}` : ""}
                       </li>
                     );

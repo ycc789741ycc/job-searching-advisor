@@ -1,0 +1,101 @@
+# The application: three backend services from one image, plus the SPA.
+#
+# `build-app` builds these images; `start-app` runs them. `api`, `worker` and
+# `crawler` are the same `runtime` image with different commands — that is what
+# "one artifact promoted unchanged" means here.
+#
+# Each service is given only the configuration it needs. `env_file` is
+# deliberately NOT on the shared anchor: handing every container the whole .env
+# would put the master encryption key and the connector secrets inside the
+# crawler and the SPA, which section 4 forbids.
+#
+# The network is created by `start-infra`, which is why `start-app` needs infra
+# to be up and cannot bring it up itself.
+
+# Its own compose project, separate from infra's, so --remove-orphans here can
+# only ever affect application containers.
+name: jsa-app
+
+networks:
+  default:
+    name: jsa_net
+    external: true
+
+x-service: &service
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+
+x-backend: &backend
+  <<: *service
+  build:
+    context: ./backend
+    target: runtime
+  image: jsa-backend:dev
+  # These processes only ever write to the caches declared below.
+  read_only: true
+  tmpfs:
+    - /tmp
+
+services:
+  # Verifies tokens, serves HTTP, starts connector OAuth. Holds the master key.
+  api:
+    <<: *backend
+    env_file: .env
+    command:
+      - uvicorn
+      - app.api_main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+    ports:
+      - "${API_PUBLISHED_PORT:?API_PUBLISHED_PORT is required}:8000"
+
+  # Runs AI jobs and connector syncs. Holds the master key and connector tokens.
+  worker:
+    <<: *backend
+    env_file: .env
+    command: ["python", "-m", "app.worker_main"]
+    volumes:
+      # The local embedding model is downloaded once and reused.
+      - modelcache:/home/app/.cache/huggingface
+
+  # Parses hostile HTML from the internet, so it holds no secrets at all — not
+  # the master encryption key, not a connector token, not even app_rw's
+  # connection string. Its environment is listed explicitly rather than taken
+  # from .env, and require_for(Unit.CRAWLER) asserts at startup that this is
+  # genuinely all it needs.
+  crawler:
+    <<: *backend
+    command: ["python", "-m", "app.crawler_main"]
+    environment:
+      APP_ENV: ${APP_ENV:?APP_ENV is required}
+      SERVICE_NAME: ${SERVICE_NAME:-job-searching-advisor}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CRAWLER_DATABASE_URL: ${CRAWLER_DATABASE_URL:?CRAWLER_DATABASE_URL is required}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
+      CRAWL_USER_AGENT: ${CRAWL_USER_AGENT:-JobSearchingAdvisorBot/1.0}
+      CRAWL_HTTP_TIMEOUT_SECONDS: ${CRAWL_HTTP_TIMEOUT_SECONDS:-30}
+      CRAWL_RATE_LIMIT_PER_HOST_PER_SECOND: ${CRAWL_RATE_LIMIT_PER_HOST_PER_SECOND:-1}
+      EMBEDDING_MODEL_NAME: ${EMBEDDING_MODEL_NAME:-sentence-transformers/all-MiniLM-L6-v2}
+    volumes:
+      - modelcache:/home/app/.cache/huggingface
+
+  # Static bundle plus a config.js written at start. Everything it receives
+  # reaches the browser, so it receives nothing else.
+  web:
+    <<: *service
+    build:
+      context: ./web
+      target: runtime
+    image: jsa-web:dev
+    environment:
+      WEB_API_BASE_URL: ${WEB_API_BASE_URL:?WEB_API_BASE_URL is required}
+      WEB_CLERK_PUBLISHABLE_KEY: ${WEB_CLERK_PUBLISHABLE_KEY:?WEB_CLERK_PUBLISHABLE_KEY is required}
+    ports:
+      - "${WEB_PUBLISHED_PORT:?WEB_PUBLISHED_PORT is required}:8080"
+
+volumes:
+  modelcache:

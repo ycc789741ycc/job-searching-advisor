@@ -1,16 +1,30 @@
 # Infra only: the datastore and object storage the app depends on.
-# Application processes are started by `make start-app`, never from here.
-# Every value comes from .env — nothing environment-specific is literal here.
+#
+# Application containers live in compose.app.yml, so `start-infra` and
+# `start-app` stay independent and neither can start the other.
+#
+# Image tags are pinned — never `latest` — and every value comes from .env.
+
+# Its own compose project, separate from the app's. Sharing one project name
+# would make `stop-app --remove-orphans` treat these services as orphans of the
+# app stack and remove them — an app target must never touch infra.
+name: jsa-infra
+
+networks:
+  default:
+    name: jsa_net
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:0.8.6-pg16-bookworm
     environment:
       POSTGRES_USER: ${POSTGRES_SUPERUSER:?POSTGRES_SUPERUSER is required}
       POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?POSTGRES_SUPERUSER_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
     ports:
-      - "${POSTGRES_PORT:?POSTGRES_PORT is required}:5432"
+      # Published for a human with a database client. Services reach Postgres by
+      # its service name on jsa_net, not through this port.
+      - "${POSTGRES_PUBLISHED_PORT:?POSTGRES_PUBLISHED_PORT is required}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -20,16 +34,18 @@ services:
       retries: 20
 
   objectstore:
-    # quay.io, not Docker Hub: the docker.io/minio/minio repository is no
-    # longer publicly pullable.
-    image: quay.io/minio/minio:latest
+    # quay.io, not Docker Hub: the docker.io/minio/minio repository is no longer
+    # publicly pullable.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID is required}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY is required}
     ports:
-      - "${S3_PORT:-9000}:9000"
-      - "${S3_CONSOLE_PORT:-9001}:9001"
+      # Published so a browser can follow a presigned URL, which is signed
+      # against S3_PUBLIC_ENDPOINT_URL.
+      - "${S3_PUBLISHED_PORT:?S3_PUBLISHED_PORT is required}:9000"
+      - "${S3_CONSOLE_PUBLISHED_PORT:?S3_CONSOLE_PUBLISHED_PORT is required}:9001"
     volumes:
       - objectdata:/data
     healthcheck:

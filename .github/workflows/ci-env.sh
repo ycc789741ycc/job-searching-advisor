@@ -32,8 +32,15 @@ PY
 }
 
 set_value APP_ENV ci
-set_value POSTGRES_HOST localhost
-set_value POSTGRES_PORT 55432
+set_value CORS_ALLOWED_ORIGINS http://localhost:5173
+set_value API_PUBLISHED_PORT 8000
+set_value WEB_PUBLISHED_PORT 5173
+set_value POSTGRES_PUBLISHED_PORT 55432
+set_value S3_PUBLISHED_PORT 9000
+set_value S3_CONSOLE_PUBLISHED_PORT 9001
+# Service names on the container network, not localhost.
+set_value POSTGRES_HOST postgres
+set_value POSTGRES_PORT 5432
 set_value POSTGRES_DB jsa
 set_value POSTGRES_SUPERUSER postgres
 set_value POSTGRES_SUPERUSER_PASSWORD "$SUPER_PW"
@@ -41,14 +48,15 @@ set_value APP_RW_PASSWORD "$APP_PW"
 set_value CRAWLER_RW_PASSWORD "$CRAWLER_PW"
 set_value AGGREGATOR_PASSWORD "$AGG_PW"
 set_value MIGRATOR_PASSWORD "$MIG_PW"
-set_value DATABASE_URL "postgresql+asyncpg://app_rw:${APP_PW}@localhost:55432/jsa"
-set_value CRAWLER_DATABASE_URL "postgresql+asyncpg://crawler_rw:${CRAWLER_PW}@localhost:55432/jsa"
-set_value MIGRATOR_DATABASE_URL "postgresql+psycopg://migrator:${MIG_PW}@localhost:55432/jsa"
+set_value DATABASE_URL "postgresql+asyncpg://app_rw:${APP_PW}@postgres:5432/jsa"
+set_value CRAWLER_DATABASE_URL "postgresql+asyncpg://crawler_rw:${CRAWLER_PW}@postgres:5432/jsa"
+set_value MIGRATOR_DATABASE_URL "postgresql+psycopg://migrator:${MIG_PW}@postgres:5432/jsa"
 set_value CLERK_ISSUER https://ci.clerk.test
 set_value CLERK_AUDIENCE job-searching-advisor
 set_value CLERK_JWKS_URL https://ci.clerk.test/.well-known/jwks.json
 set_value MASTER_ENCRYPTION_KEY "$(key)"
-set_value S3_ENDPOINT_URL http://localhost:9000
+set_value S3_ENDPOINT_URL http://objectstore:9000
+set_value S3_PUBLIC_ENDPOINT_URL http://localhost:9000
 set_value S3_REGION us-east-1
 set_value S3_BUCKET jsa-ci
 set_value S3_ACCESS_KEY_ID jsa-ci-access
@@ -61,8 +69,8 @@ set_value JIRA_OAUTH_CLIENT_ID ci-jira
 set_value JIRA_OAUTH_CLIENT_SECRET "$(pw)"
 set_value JIRA_API_BASE_URL https://api.atlassian.com
 set_value JIRA_OAUTH_BASE_URL https://auth.atlassian.com
-set_value VITE_API_BASE_URL http://localhost:8000
-set_value VITE_CLERK_PUBLISHABLE_KEY pk_test_ci
+set_value WEB_API_BASE_URL http://localhost:8000
+set_value WEB_CLERK_PUBLISHABLE_KEY pk_test_ci
 
 blank=$(grep -E '^[A-Z_]+=$' .env || true)
 if [ -n "$blank" ]; then

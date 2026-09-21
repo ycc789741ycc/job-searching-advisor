@@ -28,7 +28,7 @@ _APP_USER_SETTING = "app.user_id"
 class Database:
     def __init__(self, settings: Settings, *, url: str | None = None) -> None:
         self._engine: AsyncEngine = create_async_engine(
-            url or str(settings.database_url),
+            url or settings.require_database_url(),
             pool_size=settings.db_pool_size,
             pool_pre_ping=True,
             connect_args={

@@ -68,8 +68,8 @@ export function Connect() {
     <section>
       <h1>Connect your work</h1>
       <p className="secondary" style={{ maxWidth: 620 }}>
-        Everything the analysis says will point back at something here, so it can
-        be checked rather than taken on trust.
+        Everything the analysis says will point back at something here, so it
+        can be checked rather than taken on trust.
       </p>
       <ErrorNote error={error} />
 
@@ -94,11 +94,17 @@ export function Connect() {
                 >
                   <div>
                     <h3 style={{ margin: 0 }}>{label.name}</h3>
-                    <p className="muted" style={{ fontSize: 13.5, margin: "4px 0 0" }}>
+                    <p
+                      className="muted"
+                      style={{ fontSize: 13.5, margin: "4px 0 0" }}
+                    >
                       {label.note}
                     </p>
                     {connection.connected && (
-                      <p className="secondary" style={{ fontSize: 13, margin: "6px 0 0" }}>
+                      <p
+                        className="secondary"
+                        style={{ fontSize: 13, margin: "6px 0 0" }}
+                      >
                         <span aria-hidden="true">✓</span> Connected
                         {connection.account ? ` as ${connection.account}` : ""}
                         {connection.last_synced_at
@@ -107,8 +113,14 @@ export function Connect() {
                       </p>
                     )}
                     {connection.last_error && (
-                      <p style={{ color: "var(--status-critical)", fontSize: 13 }}>
-                        <span aria-hidden="true">⚠</span> {connection.last_error}
+                      <p
+                        style={{
+                          color: "var(--status-critical)",
+                          fontSize: 13,
+                        }}
+                      >
+                        <span aria-hidden="true">⚠</span>{" "}
+                        {connection.last_error}
                       </p>
                     )}
                   </div>
@@ -116,14 +128,19 @@ export function Connect() {
                     variant={connection.connected ? "secondary" : "primary"}
                     busy={busy === connection.kind}
                     onClick={() =>
-                      connection.connected ? sync(connection.kind) : connect(connection.kind)
+                      connection.connected
+                        ? sync(connection.kind)
+                        : connect(connection.kind)
                     }
                   >
                     {connection.connected ? "Sync now" : "Connect"}
                   </Button>
                 </div>
                 {!connection.connected && connection.scopes.length > 0 && (
-                  <ul className="muted" style={{ fontSize: 12.5, margin: "10px 0 0 18px" }}>
+                  <ul
+                    className="muted"
+                    style={{ fontSize: 12.5, margin: "10px 0 0 18px" }}
+                  >
                     {connection.scopes.map((scope) => (
                       <li key={scope}>{scope}</li>
                     ))}
@@ -135,7 +152,10 @@ export function Connect() {
 
           <div className="card">
             <h3 style={{ margin: 0 }}>Resume</h3>
-            <p className="muted" style={{ fontSize: 13.5, margin: "4px 0 10px" }}>
+            <p
+              className="muted"
+              style={{ fontSize: 13.5, margin: "4px 0 10px" }}
+            >
               PDF or Word. Used as evidence now, and as the base document to
               revise later.
             </p>

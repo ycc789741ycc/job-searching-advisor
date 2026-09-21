@@ -1,15 +1,30 @@
 import { useMemo, useState } from "react";
 import { api } from "../api/client";
-import type { CostEstimate, Fit, Role, SalaryBand, Subscription } from "../api/types";
+import type {
+  CostEstimate,
+  Fit,
+  Role,
+  SalaryBand,
+  Subscription,
+} from "../api/types";
 import { RoleMap, type RoleBubble } from "../charts/RoleMap";
-import { Button, EmptyState, ErrorNote, Loading, inputStyle } from "../components/ui";
+import {
+  Button,
+  EmptyState,
+  ErrorNote,
+  Loading,
+  inputStyle,
+} from "../components/ui";
 import { messageOf, useAsync } from "./useAsync";
 
 /** The role map: which roles exist in this user's market, and how they fit. */
 export function Roles() {
   const roles = useAsync<Role[]>(() => api.get("/roles"), []);
   const fits = useAsync<Fit[]>(() => api.get("/fits"), []);
-  const subscriptions = useAsync<Subscription[]>(() => api.get("/company-subscriptions"), []);
+  const subscriptions = useAsync<Subscription[]>(
+    () => api.get("/company-subscriptions"),
+    [],
+  );
   const markets = useAsync<string[]>(() => api.get("/market-preferences"), []);
 
   const [company, setCompany] = useState("");
@@ -70,9 +85,19 @@ export function Roles() {
       </p>
 
       <div className="card" style={{ marginTop: 12 }}>
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 16,
+            flexWrap: "wrap",
+            alignItems: "flex-end",
+          }}
+        >
           <div style={{ flex: "1 1 220px" }}>
-            <label style={{ fontSize: 13.5, fontWeight: 600 }} htmlFor="market-input">
+            <label
+              style={{ fontSize: 13.5, fontWeight: 600 }}
+              htmlFor="market-input"
+            >
               Markets you are looking in
             </label>
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
@@ -103,7 +128,10 @@ export function Roles() {
           </div>
 
           <div style={{ flex: "1 1 220px" }}>
-            <label style={{ fontSize: 13.5, fontWeight: 600 }} htmlFor="company-input">
+            <label
+              style={{ fontSize: 13.5, fontWeight: 600 }}
+              htmlFor="company-input"
+            >
               Companies to watch
             </label>
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
@@ -119,7 +147,9 @@ export function Roles() {
                 disabled={!company.trim()}
                 onClick={() =>
                   act("company added", async () => {
-                    await api.post("/company-subscriptions", { company_name: company });
+                    await api.post("/company-subscriptions", {
+                      company_name: company,
+                    });
                     setCompany("");
                     await subscriptions.reload();
                   })
@@ -128,7 +158,10 @@ export function Roles() {
                 Watch
               </Button>
             </div>
-            <ul className="muted" style={{ fontSize: 12.5, margin: "6px 0 0", paddingLeft: 16 }}>
+            <ul
+              className="muted"
+              style={{ fontSize: 12.5, margin: "6px 0 0", paddingLeft: 16 }}
+            >
               {(subscriptions.data ?? []).map((subscription) => (
                 <li key={subscription.company_id}>
                   {subscription.company_name}
@@ -147,7 +180,9 @@ export function Roles() {
                 setBusy(true);
                 setError(null);
                 try {
-                  setEstimate(await api.get<CostEstimate>("/roles/cost-estimate"));
+                  setEstimate(
+                    await api.get<CostEstimate>("/roles/cost-estimate"),
+                  );
                 } catch (caught) {
                   setError(messageOf(caught));
                 } finally {
@@ -160,7 +195,9 @@ export function Roles() {
             <Button
               variant="secondary"
               busy={busy}
-              onClick={() => act("fits queued", () => api.post("/fits/compute"))}
+              onClick={() =>
+                act("fits queued", () => api.post("/fits/compute"))
+              }
             >
               Re-score fit
             </Button>
@@ -180,9 +217,9 @@ export function Roles() {
           <h3 style={{ marginTop: 0 }}>Before we spend anything</h3>
           <p className="secondary" style={{ fontSize: 14 }}>
             Grouping {estimate.clusters ?? 0} clusters will cost about{" "}
-            <strong>${estimate.cost_usd}</strong> on {estimate.model_id}. Grouping
-            itself runs on our machines; your key pays only for naming the roles
-            and reading out what they require.
+            <strong>${estimate.cost_usd}</strong> on {estimate.model_id}.
+            Grouping itself runs on our machines; your key pays only for naming
+            the roles and reading out what they require.
           </p>
           <div style={{ display: "flex", gap: 8 }}>
             <Button
@@ -211,7 +248,11 @@ export function Roles() {
         </EmptyState>
       ) : (
         <div className="card" style={{ marginTop: 16 }}>
-          <RoleMap roles={bubbles} selectedId={selected} onSelect={setSelected} />
+          <RoleMap
+            roles={bubbles}
+            selectedId={selected}
+            onSelect={setSelected}
+          />
         </div>
       )}
 
@@ -244,7 +285,9 @@ export function Roles() {
                             <td>{gap.dimension_key}</td>
                             <td>{gap.user_score}</td>
                             <td>{gap.target_score}</td>
-                            <td style={{ color: "var(--status-critical)" }}>{gap.delta}</td>
+                            <td style={{ color: "var(--status-critical)" }}>
+                              {gap.delta}
+                            </td>
                           </tr>
                         ))}
                     </tbody>
@@ -257,8 +300,8 @@ export function Roles() {
                     No evidence at all for these
                   </h3>
                   <p className="muted" style={{ fontSize: 13 }}>
-                    These are different from a low score: nothing in your profile
-                    speaks to them either way.
+                    These are different from a low score: nothing in your
+                    profile speaks to them either way.
                   </p>
                   <ul style={{ fontSize: 13.5 }}>
                     {activeFit.uncovered.map((item) => (
@@ -273,7 +316,9 @@ export function Roles() {
               Not scored yet — run an analysis, then re-score fit.
             </p>
           )}
-          <h3 style={{ fontSize: 14, marginTop: 16 }}>What this role asks for</h3>
+          <h3 style={{ fontSize: 14, marginTop: 16 }}>
+            What this role asks for
+          </h3>
           <ul style={{ fontSize: 13.5 }}>
             {activeRole.requirements.map((requirement) => (
               <li key={requirement.statement}>

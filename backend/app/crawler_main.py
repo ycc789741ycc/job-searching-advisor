@@ -12,7 +12,7 @@ import asyncio
 
 from app.container import build_crawl_ingest
 from crawler.run import crawl_all
-from kernel.config import get_settings
+from kernel.config import Unit, get_settings
 from kernel.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
@@ -45,6 +45,8 @@ async def run_once() -> None:
 async def main() -> None:
     settings = get_settings()
     configure_logging(f"{settings.service_name}-crawler", settings.log_level)
+    # Missing configuration fails here, at startup, not at first use.
+    settings.require_for(Unit.CRAWLER)
     # One weekly crawl covers subscribed company boards and market-wide APIs.
     while True:
         await run_once()

@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import errors
 from app.container import container
 from app.queue import queue
-from kernel.config import get_settings
+from kernel.config import Unit, get_settings
 from kernel.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
@@ -26,6 +26,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.service_name, settings.log_level)
     deps = container()
+    # Missing configuration fails here, at startup, not at first use.
+    settings.require_for(Unit.API)
     deps.object_store.ensure_bucket()
     async with queue().open_async():
         log.info("api.started", app_env=settings.app_env, port=settings.port)
@@ -44,7 +46,7 @@ def create_app() -> FastAPI:
     # The SPA is the only browser client, and it is served from its own origin.
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.oauth_redirect_base_url],
+        allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

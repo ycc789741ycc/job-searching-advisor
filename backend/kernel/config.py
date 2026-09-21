@@ -8,6 +8,7 @@ secrets (design-guideline shared-context: Configuration).
 
 from __future__ import annotations
 
+from enum import StrEnum
 from functools import lru_cache
 
 from pydantic import Field, PostgresDsn, SecretStr, field_validator
@@ -26,17 +27,27 @@ class Settings(BaseSettings):
     service_name: str = Field(default="job-searching-advisor", alias="SERVICE_NAME")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     port: int = Field(default=8000, alias="PORT")
+    # Browser origins allowed to call the API — the SPA's origin, which is not
+    # the same thing as the API's own URL or the OAuth redirect base.
+    cors_allowed_origins: str = Field(default="", alias="CORS_ALLOWED_ORIGINS")
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
 
     # --- Persistence --------------------------------------------------------
-    database_url: PostgresDsn = Field(alias="DATABASE_URL")
+    # Optional at the type level because the crawler must NOT hold app_rw's
+    # credentials. Each entrypoint asserts what it actually needs at startup —
+    # see require_for(), below.
+    database_url: PostgresDsn | None = Field(default=None, alias="DATABASE_URL")
     crawler_database_url: PostgresDsn | None = Field(default=None, alias="CRAWLER_DATABASE_URL")
     db_pool_size: int = Field(default=5, alias="DB_POOL_SIZE")
     db_statement_timeout_ms: int = Field(default=30_000, alias="DB_STATEMENT_TIMEOUT_MS")
 
-    # --- Auth ---------------------------------------------------------------
-    clerk_issuer: str = Field(alias="CLERK_ISSUER")
-    clerk_audience: str = Field(alias="CLERK_AUDIENCE")
-    clerk_jwks_url: str = Field(alias="CLERK_JWKS_URL")
+    # --- Auth (api only) ----------------------------------------------------
+    clerk_issuer: str | None = Field(default=None, alias="CLERK_ISSUER")
+    clerk_audience: str | None = Field(default=None, alias="CLERK_AUDIENCE")
+    clerk_jwks_url: str | None = Field(default=None, alias="CLERK_JWKS_URL")
     clerk_jwks_cache_seconds: int = Field(default=600, alias="CLERK_JWKS_CACHE_SECONDS")
 
     # --- Encryption ---------------------------------------------------------
@@ -44,22 +55,32 @@ class Settings(BaseSettings):
     master_encryption_key: SecretStr | None = Field(default=None, alias="MASTER_ENCRYPTION_KEY")
 
     # --- Object storage -----------------------------------------------------
-    s3_endpoint_url: str = Field(alias="S3_ENDPOINT_URL")
-    s3_region: str = Field(alias="S3_REGION")
-    s3_bucket: str = Field(alias="S3_BUCKET")
-    s3_access_key_id: SecretStr = Field(alias="S3_ACCESS_KEY_ID")
-    s3_secret_access_key: SecretStr = Field(alias="S3_SECRET_ACCESS_KEY")
+    # Where the services reach object storage — a compose service name in a
+    # container network.
+    s3_endpoint_url: str | None = Field(default=None, alias="S3_ENDPOINT_URL")
+    # Where a browser reaches it. A presigned URL is signed against its host,
+    # so signing with the internal name would hand the client an address it
+    # cannot resolve.
+    s3_public_endpoint_url: str | None = Field(default=None, alias="S3_PUBLIC_ENDPOINT_URL")
+    s3_region: str | None = Field(default=None, alias="S3_REGION")
+    s3_bucket: str | None = Field(default=None, alias="S3_BUCKET")
+    s3_access_key_id: SecretStr | None = Field(default=None, alias="S3_ACCESS_KEY_ID")
+    s3_secret_access_key: SecretStr | None = Field(default=None, alias="S3_SECRET_ACCESS_KEY")
     signed_url_ttl_seconds: int = Field(default=300, alias="SIGNED_URL_TTL_SECONDS")
 
-    # --- Connector OAuth (separate from login OAuth) ------------------------
-    oauth_redirect_base_url: str = Field(alias="OAUTH_REDIRECT_BASE_URL")
-    github_oauth_client_id: str = Field(alias="GITHUB_OAUTH_CLIENT_ID")
-    github_oauth_client_secret: SecretStr = Field(alias="GITHUB_OAUTH_CLIENT_SECRET")
-    github_api_base_url: str = Field(alias="GITHUB_API_BASE_URL")
-    jira_oauth_client_id: str = Field(alias="JIRA_OAUTH_CLIENT_ID")
-    jira_oauth_client_secret: SecretStr = Field(alias="JIRA_OAUTH_CLIENT_SECRET")
-    jira_api_base_url: str = Field(alias="JIRA_API_BASE_URL")
-    jira_oauth_base_url: str = Field(alias="JIRA_OAUTH_BASE_URL")
+    # --- Connector OAuth (api and worker; never the crawler) ----------------
+    oauth_redirect_base_url: str | None = Field(default=None, alias="OAUTH_REDIRECT_BASE_URL")
+    github_oauth_client_id: str | None = Field(default=None, alias="GITHUB_OAUTH_CLIENT_ID")
+    github_oauth_client_secret: SecretStr | None = Field(
+        default=None, alias="GITHUB_OAUTH_CLIENT_SECRET"
+    )
+    github_api_base_url: str | None = Field(default=None, alias="GITHUB_API_BASE_URL")
+    jira_oauth_client_id: str | None = Field(default=None, alias="JIRA_OAUTH_CLIENT_ID")
+    jira_oauth_client_secret: SecretStr | None = Field(
+        default=None, alias="JIRA_OAUTH_CLIENT_SECRET"
+    )
+    jira_api_base_url: str | None = Field(default=None, alias="JIRA_API_BASE_URL")
+    jira_oauth_base_url: str | None = Field(default=None, alias="JIRA_OAUTH_BASE_URL")
 
     # --- AI gateway ---------------------------------------------------------
     ai_request_timeout_seconds: int = Field(default=120, alias="AI_REQUEST_TIMEOUT_SECONDS")
@@ -105,6 +126,36 @@ class Settings(BaseSettings):
             raise ValueError("ASSESSMENT_CONFIDENCE_THRESHOLD must be between 0 and 1")
         return value
 
+    def require_database_url(self) -> str:
+        """The app's connection string. Absent on the crawler by design."""
+        if self.database_url is None:
+            raise MissingSecretError(
+                "DATABASE_URL is not set on this process. The crawler uses "
+                "CRAWLER_DATABASE_URL and must not hold app_rw's credentials."
+            )
+        return str(self.database_url)
+
+    def require_crawler_database_url(self) -> str:
+        if self.crawler_database_url is None:
+            raise MissingSecretError("CRAWLER_DATABASE_URL is required to run the crawler")
+        return str(self.crawler_database_url)
+
+    def require_for(self, unit: Unit) -> None:
+        """Assert this process has what it needs, at startup.
+
+        One settings object is read once, but the three deployables need
+        different parts of it — and deliberately must not hold each other's
+        secrets. Checking per unit keeps "missing configuration fails at
+        startup" true without forcing every process to carry every credential
+        (docs/technical_boundaries.md section 4).
+        """
+        missing = [name for name in _REQUIRED_BY_UNIT[unit] if getattr(self, name) is None]
+        if missing:
+            raise MissingSecretError(
+                f"{unit} is missing required configuration: "
+                + ", ".join(sorted(_ENV_NAME[name] for name in missing))
+            )
+
     def require_master_key(self) -> SecretStr:
         """Fail loudly where a secret is needed but the unit must not hold one."""
         if self.master_encryption_key is None:
@@ -117,6 +168,77 @@ class Settings(BaseSettings):
 
 class MissingSecretError(RuntimeError):
     """A secret this code path needs is absent from the process environment."""
+
+
+class Unit(StrEnum):
+    """The three deployables, which need different parts of the configuration."""
+
+    API = "api"
+    WORKER = "worker"
+    CRAWLER = "crawler"
+
+
+_SHARED_STORAGE = (
+    "database_url",
+    "master_encryption_key",
+    "s3_endpoint_url",
+    "s3_public_endpoint_url",
+    "s3_region",
+    "s3_bucket",
+    "s3_access_key_id",
+    "s3_secret_access_key",
+)
+
+_CONNECTORS = (
+    "oauth_redirect_base_url",
+    "github_oauth_client_id",
+    "github_oauth_client_secret",
+    "github_api_base_url",
+    "jira_oauth_client_id",
+    "jira_oauth_client_secret",
+    "jira_api_base_url",
+    "jira_oauth_base_url",
+)
+
+_REQUIRED_BY_UNIT: dict[Unit, tuple[str, ...]] = {
+    # The api verifies tokens and starts connector OAuth, so it needs Clerk and
+    # the connector client credentials.
+    Unit.API: (
+        *_SHARED_STORAGE,
+        *_CONNECTORS,
+        "clerk_issuer",
+        "clerk_audience",
+        "clerk_jwks_url",
+    ),
+    # The worker runs AI jobs and connector syncs. It never verifies a token.
+    Unit.WORKER: (*_SHARED_STORAGE, *_CONNECTORS),
+    # The crawler reads public job boards. No user data, no secrets — not the
+    # master key, not a connector token, not even app_rw's connection string.
+    Unit.CRAWLER: ("crawler_database_url",),
+}
+
+_ENV_NAME: dict[str, str] = {name: name.upper() for name in (*_SHARED_STORAGE, *_CONNECTORS)}
+_ENV_NAME.update(
+    {
+        "clerk_issuer": "CLERK_ISSUER",
+        "clerk_audience": "CLERK_AUDIENCE",
+        "clerk_jwks_url": "CLERK_JWKS_URL",
+        "crawler_database_url": "CRAWLER_DATABASE_URL",
+    }
+)
+
+
+def must[T](value: T | None, name: str) -> T:
+    """Narrow a setting this process already asserted it has.
+
+    Fields that only some deployables need are optional in the schema, and each
+    entrypoint checks its own set with ``Settings.require_for``. This is how a
+    call site turns that guarantee into a non-optional type — and still fails
+    loudly rather than passing ``None`` onward if the wiring is ever wrong.
+    """
+    if value is None:
+        raise MissingSecretError(f"{name} is required on this process but is not set")
+    return value
 
 
 @lru_cache(maxsize=1)

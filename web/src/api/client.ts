@@ -6,7 +6,9 @@
  * can show the message near the thing that failed rather than a generic banner.
  */
 
-const BASE = import.meta.env.VITE_API_BASE_URL as string;
+import { loadConfig } from "../config";
+
+const BASE = loadConfig().apiBaseUrl;
 
 export class ApiError extends Error {
   constructor(
@@ -27,10 +29,7 @@ export function useTokenSource(source: TokenSource): void {
   getToken = source;
 }
 
-async function request<T>(
-  path: string,
-  init: RequestInit = {},
-): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await getToken();
   const headers = new Headers(init.headers);
   if (token) headers.set("authorization", `Bearer ${token}`);
@@ -59,7 +58,10 @@ async function request<T>(
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : null }),
+    request<T>(path, {
+      method: "POST",
+      body: body ? JSON.stringify(body) : null,
+    }),
   put: <T>(path: string, body: unknown) =>
     request<T>(path, { method: "PUT", body: JSON.stringify(body) }),
   del: <T>(path: string) => request<T>(path, { method: "DELETE" }),

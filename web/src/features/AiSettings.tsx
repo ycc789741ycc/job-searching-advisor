@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { api } from "../api/client";
 import type { Budget, Credential } from "../api/types";
-import { Button, ErrorNote, Field, Loading, StatTile, inputStyle } from "../components/ui";
+import {
+  Button,
+  ErrorNote,
+  Field,
+  Loading,
+  StatTile,
+  inputStyle,
+} from "../components/ui";
 import { messageOf, useAsync } from "./useAsync";
 
 /**
@@ -12,9 +19,15 @@ import { messageOf, useAsync } from "./useAsync";
  * here too.
  */
 export function AiSettings() {
-  const credential = useAsync<Credential | null>(() => api.get("/ai-credential"), []);
+  const credential = useAsync<Credential | null>(
+    () => api.get("/ai-credential"),
+    [],
+  );
   const budget = useAsync<Budget>(() => api.get("/ai-budget"), []);
-  const providers = useAsync<Record<string, string[]>>(() => api.get("/ai-providers"), []);
+  const providers = useAsync<Record<string, string[]>>(
+    () => api.get("/ai-providers"),
+    [],
+  );
 
   const [provider, setProvider] = useState("anthropic");
   const [model, setModel] = useState("claude-opus-5");
@@ -122,7 +135,10 @@ export function AiSettings() {
           </datalist>
         </Field>
 
-        <Field label="API key" hint="Stored encrypted. We only ever show the last four characters.">
+        <Field
+          label="API key"
+          hint="Stored encrypted. We only ever show the last four characters."
+        >
           <input
             style={inputStyle}
             type="password"
@@ -165,13 +181,26 @@ export function AiSettings() {
       </p>
       <ErrorNote error={budget.error} />
       {budget.data && (
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+        <div
+          style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}
+        >
           <StatTile label="Cap" value={`$${budget.data.monthly_cap_usd}`} />
-          <StatTile label="Spent this month" value={`$${budget.data.spent_this_month_usd}`} />
+          <StatTile
+            label="Spent this month"
+            value={`$${budget.data.spent_this_month_usd}`}
+          />
           <StatTile label="Remaining" value={`$${budget.data.remaining_usd}`} />
         </div>
       )}
-      <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginTop: 14, maxWidth: 360 }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "flex-end",
+          marginTop: 14,
+          maxWidth: 360,
+        }}
+      >
         <div style={{ flex: 1 }}>
           <Field label="New monthly cap (USD)">
             <input

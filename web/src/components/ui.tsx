@@ -25,8 +25,16 @@ export function Button({
 }) {
   const palette = {
     primary: { bg: "var(--series-1)", fg: "#ffffff", border: "transparent" },
-    secondary: { bg: "transparent", fg: "var(--text-primary)", border: "var(--border)" },
-    danger: { bg: "transparent", fg: "var(--status-critical)", border: "var(--border)" },
+    secondary: {
+      bg: "transparent",
+      fg: "var(--text-primary)",
+      border: "var(--border)",
+    },
+    danger: {
+      bg: "transparent",
+      fg: "var(--status-critical)",
+      border: "var(--border)",
+    },
   }[variant];
 
   return (
@@ -63,12 +71,22 @@ export function Field({
 }) {
   return (
     <label style={{ display: "block", marginBottom: 14 }}>
-      <span style={{ display: "block", fontWeight: 600, fontSize: 13.5, marginBottom: 4 }}>
+      <span
+        style={{
+          display: "block",
+          fontWeight: 600,
+          fontSize: 13.5,
+          marginBottom: 4,
+        }}
+      >
         {label}
       </span>
       {children}
       {hint && (
-        <span className="muted" style={{ display: "block", fontSize: 12.5, marginTop: 4 }}>
+        <span
+          className="muted"
+          style={{ display: "block", fontSize: 12.5, marginTop: 4 }}
+        >
           {hint}
         </span>
       )}
@@ -107,7 +125,13 @@ export function ErrorNote({ error }: { error: string | null }) {
   );
 }
 
-export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
+export function EmptyState({
+  title,
+  children,
+}: {
+  title: string;
+  children?: ReactNode;
+}) {
   return (
     <div style={{ padding: "24px 0", textAlign: "center" }}>
       <p style={{ fontWeight: 600, margin: 0 }}>{title}</p>
@@ -128,13 +152,23 @@ export function Loading({ what }: { what: string }) {
   );
 }
 
-export function StatTile({ label, value, note }: { label: string; value: string; note?: string }) {
+export function StatTile({
+  label,
+  value,
+  note,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+}) {
   return (
     <div className="card" style={{ minWidth: 150 }}>
       <div className="muted" style={{ fontSize: 12.5 }}>
         {label}
       </div>
-      <div style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.1, marginTop: 2 }}>
+      <div
+        style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.1, marginTop: 2 }}
+      >
         {value}
       </div>
       {note && (

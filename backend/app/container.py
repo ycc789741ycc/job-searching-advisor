@@ -12,7 +12,7 @@ from functools import lru_cache
 
 from kernel.ai_gateway import AiGateway
 from kernel.auth import JwksResolver, TokenVerifier
-from kernel.config import Settings, get_settings
+from kernel.config import Settings, Unit, get_settings, must
 from kernel.db import Database
 from kernel.storage import ObjectStore
 from modules.assessment.public import AssessmentService
@@ -23,17 +23,36 @@ from modules.profile.public import ProfileService
 from modules.rolemap.public import RoleMapService
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass
 class Container:
     settings: Settings
     database: Database
-    verifier: TokenVerifier
     identity: IdentityService
     profile: ProfileService
     market: MarketService
     rolemap: RoleMapService
     assessment: AssessmentService
     object_store: ObjectStore
+    _verifier: TokenVerifier | None = None
+
+    @property
+    def verifier(self) -> TokenVerifier:
+        """Built on first use.
+
+        Only `api` verifies tokens, so the worker runs with no Clerk
+        configuration at all and must not fail for wanting it.
+        """
+        if self._verifier is None:
+            settings = self.settings
+            settings.require_for(Unit.API)
+            self._verifier = TokenVerifier(
+                issuer=str(settings.clerk_issuer),
+                audience=str(settings.clerk_audience),
+                resolver=JwksResolver(
+                    str(settings.clerk_jwks_url), settings.clerk_jwks_cache_seconds
+                ),
+            )
+        return self._verifier
 
     async def aclose(self) -> None:
         await self.database.dispose()
@@ -57,8 +76,8 @@ def build(settings: Settings | None = None) -> Container:
         database,
         object_store=object_store,
         connectors={
-            "github": GitHubConnector(settings.github_api_base_url),
-            "jira": JiraConnector(settings.jira_api_base_url),
+            "github": GitHubConnector(must(settings.github_api_base_url, "GITHUB_API_BASE_URL")),
+            "jira": JiraConnector(must(settings.jira_api_base_url, "JIRA_API_BASE_URL")),
         },
         resume_max_bytes=settings.resume_max_bytes,
         resume_max_pages=settings.resume_max_pages,
@@ -80,16 +99,9 @@ def build(settings: Settings | None = None) -> Container:
         confidence_threshold=settings.assessment_confidence_threshold,
     )
 
-    verifier = TokenVerifier(
-        issuer=settings.clerk_issuer,
-        audience=settings.clerk_audience,
-        resolver=JwksResolver(settings.clerk_jwks_url, settings.clerk_jwks_cache_seconds),
-    )
-
     return Container(
         settings=settings,
         database=database,
-        verifier=verifier,
         identity=identity,
         profile=profile,
         market=market,
@@ -106,9 +118,8 @@ def build_crawl_ingest(settings: Settings | None = None) -> tuple[Database, Craw
     secrets by design.
     """
     settings = settings or get_settings()
-    if settings.crawler_database_url is None:
-        raise RuntimeError("CRAWLER_DATABASE_URL is required to run the crawler")
-    database = Database(settings, url=str(settings.crawler_database_url))
+    settings.require_for(Unit.CRAWLER)
+    database = Database(settings, url=settings.require_crawler_database_url())
     return database, CrawlIngest(database)
 
 

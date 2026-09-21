@@ -57,7 +57,8 @@ export function RoleMap({ roles, selectedId, onSelect }: Props) {
   if (roles.length === 0) {
     return (
       <p className="muted">
-        No roles yet. Watch a company or choose a market, then build your role map.
+        No roles yet. Watch a company or choose a market, then build your role
+        map.
       </p>
     );
   }
@@ -227,7 +228,8 @@ export function RoleMap({ roles, selectedId, onSelect }: Props) {
               {active.barBasis === "estimated" ? " (estimated)" : ""}
             </div>
             <div className="secondary">
-              {active.salaryLabel ?? "no published pay"} · {active.openings} openings
+              {active.salaryLabel ?? "no published pay"} · {active.openings}{" "}
+              openings
             </div>
             {active.reasoning && (
               <div className="muted" style={{ marginTop: 4 }}>
@@ -268,14 +270,16 @@ export function RoleMap({ roles, selectedId, onSelect }: Props) {
           </svg>
           Difficulty estimated from the postings
         </span>
-        <span className="legend-item">Bubble size is how well the role fits you</span>
+        <span className="legend-item">
+          Bubble size is how well the role fits you
+        </span>
       </div>
 
       {withoutSalary > 0 && (
         <p className="muted" style={{ fontSize: 13 }}>
-          {withoutSalary} role{withoutSalary === 1 ? "" : "s"} had no published pay in
-          your markets, so {withoutSalary === 1 ? "it is" : "they are"} listed in the
-          table below rather than plotted.
+          {withoutSalary} role{withoutSalary === 1 ? "" : "s"} had no published
+          pay in your markets, so {withoutSalary === 1 ? "it is" : "they are"}{" "}
+          listed in the table below rather than plotted.
         </p>
       )}
 

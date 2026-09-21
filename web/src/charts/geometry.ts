@@ -68,7 +68,10 @@ export function linearScale(
 }
 
 /** Pads a domain so marks never sit on the axis line. */
-export function paddedDomain(values: number[], padRatio = 0.12): [number, number] {
+export function paddedDomain(
+  values: number[],
+  padRatio = 0.12,
+): [number, number] {
   if (values.length === 0) return [0, 1];
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -86,7 +89,11 @@ export function paddedDomain(values: number[], padRatio = 0.12): [number, number
  * Area, not radius, is proportional to the value — scaling the radius linearly
  * makes a 2x value look 4x bigger.
  */
-export function bubbleRadius(fit: number, minRadius = 8, maxRadius = 34): number {
+export function bubbleRadius(
+  fit: number,
+  minRadius = 8,
+  maxRadius = 34,
+): number {
   const clamped = Math.max(0, Math.min(100, fit)) / 100;
   const minArea = minRadius * minRadius;
   const maxArea = maxRadius * maxRadius;
