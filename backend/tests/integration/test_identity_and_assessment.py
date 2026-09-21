@@ -19,6 +19,7 @@ from kernel.config import Settings
 from kernel.db import Database
 from modules.identity.public import IdentityService
 from modules.profile.public import ProfileService
+from modules.rolemap.domain import MAX_ROLES_ANALYZED
 from modules.rolemap.public import RoleMapService
 
 pytestmark = pytest.mark.integration
@@ -261,6 +262,7 @@ async def test_an_assessment_citing_evidence_the_user_lacks_is_rejected(
     rolemap = RoleMapService(
         database,
         market=MarketService(database, manual_refresh_per_day=3),
+        profile=profile,
         gateway=gateway,
         embedding_model=settings.embedding_model_name,
     )
@@ -299,6 +301,7 @@ async def test_an_assessment_citing_evidence_the_user_lacks_is_rejected(
 async def test_the_role_map_estimate_runs_no_local_ml(
     database: Database,
     identity: IdentityService,
+    profile: ProfileService,
     settings: Settings,
     account: uuid.UUID,
     monkeypatch: pytest.MonkeyPatch,
@@ -329,6 +332,7 @@ async def test_the_role_map_estimate_runs_no_local_ml(
     rolemap = RoleMapService(
         database,
         market=market,
+        profile=profile,
         gateway=AiGateway(settings=settings, credentials=identity, budget=identity),
         embedding_model=settings.embedding_model_name,
     )
@@ -339,3 +343,91 @@ async def test_the_role_map_estimate_runs_no_local_ml(
     assert estimate["max_clusters"] == 2
     assert Decimal(estimate["cost_usd"]) > 0
     assert estimate["model_id"] == "claude-opus-5"
+
+
+async def test_a_role_map_analyses_only_the_ten_clusters_closest_to_the_profile(
+    database: Database,
+    identity: IdentityService,
+    profile: ProfileService,
+    settings: Settings,
+    account: uuid.UUID,
+    stub_provider: StubProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Twelve clusters, ten analysed: the key is spent on the closest ones only."""
+    import json
+    import re
+
+    import modules.rolemap.public as rolemap_public
+    from kernel.embeddings import EMBEDDING_DIMENSIONS, ClusterResult
+    from modules.market.public import MarketService
+
+    # A stand-in embedding: each "group-N" marker in a text adds weight on axis N.
+    def fake_embed(texts: list[str], *, model_name: str) -> list[list[float]]:
+        vectors = []
+        for text_ in texts:
+            vector = [0.0] * EMBEDDING_DIMENSIONS
+            for marker in re.findall(r"group-(\d+)", text_):
+                vector[int(marker)] += 1.0
+            vectors.append(vector)
+        return vectors
+
+    def fake_cluster(vectors: list[list[float]], *, min_cluster_size: int) -> ClusterResult:
+        return ClusterResult(labels=[max(range(len(v)), key=v.__getitem__) for v in vectors])
+
+    monkeypatch.setattr(rolemap_public, "embed", fake_embed)
+    monkeypatch.setattr(rolemap_public, "cluster", fake_cluster)
+
+    await identity.set_credential(
+        account, provider="anthropic", model="claude-opus-5", api_key="sk-test", base_url=None
+    )
+    market = MarketService(database, manual_refresh_per_day=3)
+    for group in range(12):
+        for copy in range(3):
+            await market.paste_job_description(
+                account,
+                company_name=f"Company {group}-{copy}",
+                title=f"Role group-{group}",
+                location=None,
+                description="What the job involves.",
+            )
+    # Closer to higher-numbered groups, and nowhere near groups 0 and 1.
+    await profile.record_answer(
+        account,
+        question_id="q1",
+        question="What have you worked on?",
+        answer=" ".join(f"group-{g} " * g for g in range(2, 12)),
+    )
+
+    for group in range(MAX_ROLES_ANALYZED):
+        stub_provider.replies.append(
+            json.dumps(
+                {
+                    "name": f"Role {group}",
+                    "requirements": [
+                        {"statement": "Python", "weight": 0.5, "expected_level": "senior"}
+                    ],
+                }
+            )
+        )
+        stub_provider.replies.append(
+            json.dumps({"difficulty": 50, "confidence": 0.5, "reasoning": "A guess."})
+        )
+
+    rolemap = RoleMapService(
+        database,
+        market=market,
+        profile=profile,
+        gateway=AiGateway(settings=settings, credentials=identity, budget=identity),
+        embedding_model=settings.embedding_model_name,
+    )
+    roles = await rolemap.recluster(account)
+
+    assert len(roles) == MAX_ROLES_ANALYZED
+    assert len(stub_provider.calls) == 2 * MAX_ROLES_ANALYZED
+    analysed = {
+        match.group(1)
+        for call in stub_provider.calls
+        if (match := re.search(r"group-(\d+)", call.user)) is not None
+    }
+    assert analysed == {str(g) for g in range(2, 12)}

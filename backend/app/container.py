@@ -97,6 +97,7 @@ def build(settings: Settings | None = None) -> Container:
     rolemap = RoleMapService(
         database,
         market=market,
+        profile=profile,
         gateway=gateway,
         embedding_model=settings.embedding_model_name,
     )
