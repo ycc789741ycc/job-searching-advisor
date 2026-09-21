@@ -1,6 +1,8 @@
 # Phase 1
 ## Login
-* User create account in the system
+* User create account in the system — **done as own email + password**, no
+  external provider. Address verification and password reset are not built
+  yet: both need email delivery, which is still undecided.
 
 ## Sources Connector
 * Jira
@@ -31,7 +33,9 @@ later phase — never a market data source.
 
 # Phase 2
 ## Support OAuth login
-* Google
+* Google — with sign-in now owned in `identity`, this is our own OAuth code
+  exchange that establishes the account and issues *our* session token, not a
+  provider-side toggle.
 
 ## Jobs
 * Matching job from platform

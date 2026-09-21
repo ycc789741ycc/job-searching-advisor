@@ -15,7 +15,6 @@ function runtimeConfig(): Plugin {
       server.middlewares.use("/config.js", (_request, response) => {
         const body = JSON.stringify({
           apiBaseUrl: process.env.WEB_API_BASE_URL ?? "",
-          clerkPublishableKey: process.env.WEB_CLERK_PUBLISHABLE_KEY ?? "",
         });
         response.setHeader("content-type", "application/javascript");
         response.setHeader("cache-control", "no-store");

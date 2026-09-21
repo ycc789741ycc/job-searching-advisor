@@ -20,7 +20,9 @@ from modules.identity.infra.models import (  # noqa: F401
     Account,
     AiUsageBudget,
     AiUsageLedger,
+    PasswordCredential,
     ProviderCredential,
+    RefreshToken,
 )
 from modules.market.infra.models import (  # noqa: F401
     Company,

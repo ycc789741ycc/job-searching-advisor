@@ -16,9 +16,7 @@ import pytest
 MINIMAL_ENV = {
     "APP_ENV": "test",
     "DATABASE_URL": "postgresql+asyncpg://app_rw:pw@localhost:5432/test",
-    "CLERK_ISSUER": "https://issuer.test",
-    "CLERK_AUDIENCE": "test-audience",
-    "CLERK_JWKS_URL": "https://issuer.test/.well-known/jwks.json",
+    "AUTH_JWT_SECRET": "unit-test-signing-secret-long-enough-to-pass",
     "MASTER_ENCRYPTION_KEY": base64.b64encode(b"k" * 32).decode(),
     "S3_ENDPOINT_URL": "http://objectstore:9000",
     "S3_PUBLIC_ENDPOINT_URL": "http://localhost:9000",

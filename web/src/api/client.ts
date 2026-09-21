@@ -1,7 +1,7 @@
 /**
  * The one place the SPA talks to the API.
  *
- * Every call carries the Clerk JWT. Errors arrive as
+ * Every call carries the access token the auth provider holds. Errors arrive as
  * `{ error: { code, message } }` and are turned into an `ApiError` so features
  * can show the message near the thing that failed rather than a generic banner.
  */
@@ -37,7 +37,8 @@ type TokenSource = () => Promise<string | null>;
 
 let getToken: TokenSource = async () => null;
 
-export function useTokenSource(source: TokenSource): void {
+/** Registered by the auth provider; not a React hook. */
+export function setTokenSource(source: TokenSource): void {
   getToken = source;
 }
 

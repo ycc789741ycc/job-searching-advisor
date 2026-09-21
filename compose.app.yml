@@ -93,7 +93,6 @@ services:
     image: jsa-web:dev
     environment:
       WEB_API_BASE_URL: ${WEB_API_BASE_URL:?WEB_API_BASE_URL is required}
-      WEB_CLERK_PUBLISHABLE_KEY: ${WEB_CLERK_PUBLISHABLE_KEY:?WEB_CLERK_PUBLISHABLE_KEY is required}
     ports:
       - "${WEB_PUBLISHED_PORT:?WEB_PUBLISHED_PORT is required}:8080"
 

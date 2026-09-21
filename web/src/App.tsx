@@ -1,13 +1,9 @@
-import {
-  SignedIn,
-  SignedOut,
-  SignIn,
-  UserButton,
-  useAuth,
-} from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
-import { api, useTokenSource } from "./api/client";
+import { api } from "./api/client";
 import type { Me } from "./api/types";
+import { useAuth } from "./auth/AuthProvider";
+import { SignInScreen } from "./auth/SignInScreen";
+import { Button, Loading } from "./components/ui";
 import { AiSettings } from "./features/AiSettings";
 import { Clarify } from "./features/Clarify";
 import { Connect } from "./features/Connect";
@@ -25,43 +21,26 @@ const SCREENS: { id: Screen; label: string }[] = [
 ];
 
 export function App() {
-  return (
-    <>
-      <SignedOut>
-        <div
-          style={{
-            minHeight: "100vh",
-            display: "grid",
-            placeItems: "center",
-            padding: 24,
-          }}
-        >
-          <div style={{ textAlign: "center" }}>
-            <h1>Job Searching Advisor</h1>
-            <p
-              className="secondary"
-              style={{ maxWidth: 420, margin: "0 auto 24px" }}
-            >
-              Turn the work you have actually done into a picture of where you
-              stand and what to aim at next.
-            </p>
-            <SignIn routing="hash" />
-          </div>
-        </div>
-      </SignedOut>
-      <SignedIn>
-        <Shell />
-      </SignedIn>
-    </>
-  );
+  const { status } = useAuth();
+
+  if (status === "loading") {
+    // The refresh cookie is being exchanged; a reload should not flash the
+    // sign-in screen while that happens.
+    return (
+      <div
+        style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}
+      >
+        <Loading what="your session" />
+      </div>
+    );
+  }
+  return status === "signed-in" ? <Shell /> : <SignInScreen />;
 }
 
 function Shell() {
-  const { getToken } = useAuth();
+  const { email, signOut } = useAuth();
   const [screen, setScreen] = useState<Screen>("connect");
   const [me, setMe] = useState<Me | null>(null);
-
-  useTokenSource(() => getToken());
 
   useEffect(() => {
     void api
@@ -113,7 +92,14 @@ function Shell() {
             </button>
           ))}
         </nav>
-        <UserButton />
+        <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span className="muted" style={{ fontSize: 13 }}>
+            {me?.email ?? email}
+          </span>
+          <Button variant="secondary" onClick={() => void signOut()}>
+            Sign out
+          </Button>
+        </span>
       </header>
 
       {me?.background_jobs_paused && (

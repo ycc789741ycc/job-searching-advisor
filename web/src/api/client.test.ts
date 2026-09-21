@@ -16,7 +16,6 @@ describe("api client", () => {
   it("reads configuration on the first request, not before", async () => {
     (window as unknown as { __APP_CONFIG__?: unknown }).__APP_CONFIG__ = {
       apiBaseUrl: "http://api.test",
-      clerkPublishableKey: `pk_test_${btoa("clerk.example.accounts.dev")}`,
     };
     const fetchMock = vi
       .fn()

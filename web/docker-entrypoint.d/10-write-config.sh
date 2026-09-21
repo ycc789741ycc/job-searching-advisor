@@ -6,12 +6,10 @@
 set -eu
 
 : "${WEB_API_BASE_URL:?WEB_API_BASE_URL is required}"
-: "${WEB_CLERK_PUBLISHABLE_KEY:?WEB_CLERK_PUBLISHABLE_KEY is required}"
 
 cat > /usr/share/nginx/html/config.js <<JS
 window.__APP_CONFIG__ = {
-  apiBaseUrl: "${WEB_API_BASE_URL}",
-  clerkPublishableKey: "${WEB_CLERK_PUBLISHABLE_KEY}"
+  apiBaseUrl: "${WEB_API_BASE_URL}"
 };
 JS
 

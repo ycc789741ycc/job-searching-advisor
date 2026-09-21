@@ -11,12 +11,12 @@ from decimal import Decimal
 from functools import lru_cache
 
 from kernel.ai_gateway import AiGateway
-from kernel.auth import JwksResolver, TokenVerifier
+from kernel.auth import ALGORITHM, StaticSecretResolver, TokenVerifier
 from kernel.config import Settings, Unit, get_settings, must
 from kernel.db import Database
 from kernel.storage import ObjectStore
 from modules.assessment.public import AssessmentService
-from modules.identity.public import IdentityService
+from modules.identity.public import AuthService, IdentityService
 from modules.market.public import CrawlIngest, MarketService
 from modules.profile.infra.connectors import GitHubConnector, JiraConnector
 from modules.profile.public import ProfileService
@@ -28,6 +28,7 @@ class Container:
     settings: Settings
     database: Database
     identity: IdentityService
+    auth: AuthService
     profile: ProfileService
     market: MarketService
     rolemap: RoleMapService
@@ -39,18 +40,16 @@ class Container:
     def verifier(self) -> TokenVerifier:
         """Built on first use.
 
-        Only `api` verifies tokens, so the worker runs with no Clerk
-        configuration at all and must not fail for wanting it.
+        Only `api` verifies tokens, so the worker runs with no signing secret
+        at all and must not fail for wanting one.
         """
         if self._verifier is None:
             settings = self.settings
-            settings.require_for(Unit.API)
             self._verifier = TokenVerifier(
-                issuer=str(settings.clerk_issuer),
-                audience=str(settings.clerk_audience),
-                resolver=JwksResolver(
-                    str(settings.clerk_jwks_url), settings.clerk_jwks_cache_seconds
-                ),
+                issuer=settings.auth_token_issuer,
+                audience=settings.auth_token_audience,
+                resolver=StaticSecretResolver(settings.require_auth_secret()),
+                algorithms=(ALGORITHM,),
             )
         return self._verifier
 
@@ -63,9 +62,19 @@ def build(settings: Settings | None = None) -> Container:
     database = Database(settings)
     object_store = ObjectStore(settings)
 
-    identity = IdentityService(
+    default_cap = Decimal(str(settings.ai_default_monthly_budget_usd))
+    identity = IdentityService(database, default_monthly_cap_usd=default_cap)
+
+    # Only the api signs tokens; the worker never does, so the secret is
+    # resolved lazily rather than at wiring time.
+    auth = AuthService(
         database,
-        default_monthly_cap_usd=Decimal(str(settings.ai_default_monthly_budget_usd)),
+        secret=settings.auth_jwt_secret.get_secret_value() if settings.auth_jwt_secret else "",
+        issuer=settings.auth_token_issuer,
+        audience=settings.auth_token_audience,
+        access_ttl_seconds=settings.auth_access_token_ttl_seconds,
+        refresh_ttl_days=settings.auth_refresh_token_ttl_days,
+        default_monthly_cap_usd=default_cap,
     )
 
     # identity supplies the gateway's credential and budget ports, which is how
@@ -103,6 +112,7 @@ def build(settings: Settings | None = None) -> Container:
         settings=settings,
         database=database,
         identity=identity,
+        auth=auth,
         profile=profile,
         market=market,
         rolemap=rolemap,

@@ -38,7 +38,7 @@ def test_a_universally_required_setting_fails_startup(
 @pytest.mark.parametrize(
     ("unit", "missing"),
     [
-        (Unit.API, "CLERK_ISSUER"),
+        (Unit.API, "AUTH_JWT_SECRET"),
         (Unit.API, "DATABASE_URL"),
         (Unit.API, "S3_BUCKET"),
         (Unit.API, "GITHUB_API_BASE_URL"),
@@ -53,6 +53,7 @@ def test_a_unit_refuses_to_start_without_what_it_needs(
     """Per-unit, because the three deployables need different configuration —
     and deliberately must not hold each other's secrets."""
     monkeypatch.setenv("CRAWLER_DATABASE_URL", "postgresql+asyncpg://c:p@postgres:5432/t")
+    monkeypatch.setenv("AUTH_JWT_SECRET", "x" * 48)
     monkeypatch.delenv(missing, raising=False)
     get_settings.cache_clear()
     with pytest.raises(MissingSecretError, match=missing):
@@ -66,9 +67,7 @@ def test_the_crawler_needs_no_secrets_at_all(
     for name in (
         "MASTER_ENCRYPTION_KEY",
         "DATABASE_URL",
-        "CLERK_ISSUER",
-        "CLERK_AUDIENCE",
-        "CLERK_JWKS_URL",
+        "AUTH_JWT_SECRET",
         "S3_ENDPOINT_URL",
         "S3_PUBLIC_ENDPOINT_URL",
         "S3_REGION",

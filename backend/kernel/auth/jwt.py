@@ -1,9 +1,13 @@
-"""JWT verification against the managed auth provider (Clerk).
+"""JWT verification.
 
-Signature, issuer, audience and expiry are checked on every request. Login
-OAuth lives entirely with the provider; connector OAuth (GitHub, Jira) is a
-separate flow with separate token storage and never touches this module
-(docs/technical_boundaries.md section 4).
+Signature, issuer, audience and expiry are checked on every request. The key
+comes from a ``SigningKeyResolver``, so this module does not care whether the
+token was issued by this application (``StaticSecretResolver``) or by an
+external OpenID provider (``JwksResolver``) — which is what keeps a later move
+to hosted sign-in a wiring change rather than a rewrite.
+
+Connector OAuth (GitHub, Jira) is a separate flow with separate token storage
+and never touches this module (docs/technical_boundaries.md section 4).
 """
 
 from __future__ import annotations

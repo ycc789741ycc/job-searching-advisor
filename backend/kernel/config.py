@@ -45,10 +45,22 @@ class Settings(BaseSettings):
     db_statement_timeout_ms: int = Field(default=30_000, alias="DB_STATEMENT_TIMEOUT_MS")
 
     # --- Auth (api only) ----------------------------------------------------
-    clerk_issuer: str | None = Field(default=None, alias="CLERK_ISSUER")
-    clerk_audience: str | None = Field(default=None, alias="CLERK_AUDIENCE")
-    clerk_jwks_url: str | None = Field(default=None, alias="CLERK_JWKS_URL")
-    clerk_jwks_cache_seconds: int = Field(default=600, alias="CLERK_JWKS_CACHE_SECONDS")
+    # We issue our own session tokens, so this secret is what signs and
+    # verifies them. Rotating it signs everyone out, which is the intended
+    # emergency control.
+    auth_jwt_secret: SecretStr | None = Field(default=None, alias="AUTH_JWT_SECRET")
+    # Identifiers, not URLs — a default is fine and keeps one less blank.
+    auth_token_issuer: str = Field(default="job-searching-advisor", alias="AUTH_TOKEN_ISSUER")
+    auth_token_audience: str = Field(
+        default="job-searching-advisor-api", alias="AUTH_TOKEN_AUDIENCE"
+    )
+    # Short: an access token cannot be revoked before it expires, so its
+    # lifetime is the window a stolen one is useful for.
+    auth_access_token_ttl_seconds: int = Field(default=900, alias="AUTH_ACCESS_TOKEN_TTL_SECONDS")
+    auth_refresh_token_ttl_days: int = Field(default=30, alias="AUTH_REFRESH_TOKEN_TTL_DAYS")
+    # False only for local http. The refresh cookie must not cross plain HTTP
+    # anywhere else.
+    auth_cookie_secure: bool = Field(default=True, alias="AUTH_COOKIE_SECURE")
 
     # --- Encryption ---------------------------------------------------------
     # Absent on the crawler by design; anything needing it fails loudly there.
@@ -126,6 +138,17 @@ class Settings(BaseSettings):
             raise ValueError("ASSESSMENT_CONFIDENCE_THRESHOLD must be between 0 and 1")
         return value
 
+    def require_auth_secret(self) -> str:
+        """The key this application signs and verifies session tokens with."""
+        if self.auth_jwt_secret is None:
+            raise MissingSecretError("AUTH_JWT_SECRET is required to issue session tokens")
+        secret = self.auth_jwt_secret.get_secret_value()
+        if len(secret) < 32:
+            raise MissingSecretError(
+                "AUTH_JWT_SECRET must be at least 32 characters; generate a random one"
+            )
+        return secret
+
     def require_database_url(self) -> str:
         """The app's connection string. Absent on the crawler by design."""
         if self.database_url is None:
@@ -201,15 +224,8 @@ _CONNECTORS = (
 )
 
 _REQUIRED_BY_UNIT: dict[Unit, tuple[str, ...]] = {
-    # The api verifies tokens and starts connector OAuth, so it needs Clerk and
-    # the connector client credentials.
-    Unit.API: (
-        *_SHARED_STORAGE,
-        *_CONNECTORS,
-        "clerk_issuer",
-        "clerk_audience",
-        "clerk_jwks_url",
-    ),
+    # The api issues and verifies session tokens and starts connector OAuth.
+    Unit.API: (*_SHARED_STORAGE, *_CONNECTORS, "auth_jwt_secret"),
     # The worker runs AI jobs and connector syncs. It never verifies a token.
     Unit.WORKER: (*_SHARED_STORAGE, *_CONNECTORS),
     # The crawler reads public job boards. No user data, no secrets — not the
@@ -220,9 +236,7 @@ _REQUIRED_BY_UNIT: dict[Unit, tuple[str, ...]] = {
 _ENV_NAME: dict[str, str] = {name: name.upper() for name in (*_SHARED_STORAGE, *_CONNECTORS)}
 _ENV_NAME.update(
     {
-        "clerk_issuer": "CLERK_ISSUER",
-        "clerk_audience": "CLERK_AUDIENCE",
-        "clerk_jwks_url": "CLERK_JWKS_URL",
+        "auth_jwt_secret": "AUTH_JWT_SECRET",
         "crawler_database_url": "CRAWLER_DATABASE_URL",
     }
 )

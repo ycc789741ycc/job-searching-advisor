@@ -93,6 +93,11 @@ they run in CI. If one breaks, the design is wrong, not the contract.
 - **Row-level security on every owner-zone table**, keyed on a per-transaction
   `app.user_id`. Forgetting a `WHERE owner_id` returns nothing, not someone
   else's rows.
+- **We run our own sign-in.** Argon2id passwords, 15-minute access tokens
+  held only in memory, and rotating refresh tokens in an httpOnly
+  `SameSite=Strict` cookie stored hashed. A reused refresh token revokes its
+  whole chain. There is no address verification or password reset yet — both
+  wait on email delivery.
 - **The AI credential is write-only.** It can be set, tested, replaced or
   deleted; a read returns provider, model and the last four characters.
 - **Nothing reaches an LLM except through `kernel.ai_gateway`**, which estimates
@@ -113,4 +118,5 @@ and follow-up questions.
 
 Out, and why: `growth` (goals and gap plans) and `resume` (generation, versions,
 chat, export) are Phase 2/3. The hiring bar is `estimated` only — `InterviewReport`
-arrives with the reporting flow later. Google login is Phase 2.
+arrives with the reporting flow later. Google login is Phase 2, as our own
+OAuth exchange that issues our own session token.

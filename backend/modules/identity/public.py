@@ -24,6 +24,7 @@ from kernel.errors import (
 )
 from kernel.fetch import assert_public_url
 from kernel.outbox import EventName, emit
+from modules.identity.auth import AuthService, Session
 from modules.identity.domain import (
     SUGGESTED_MODELS,
     BudgetState,
@@ -48,10 +49,12 @@ from modules.identity.infra.repository import (
 __all__ = [
     "SUGGESTED_MODELS",
     "AccountView",
+    "AuthService",
     "BudgetView",
     "CredentialView",
     "IdentityService",
     "Provider",
+    "Session",
 ]
 
 
@@ -73,6 +76,8 @@ class BudgetView:
 class IdentityService:
     """Accounts, the AI credential, and the budget that guards it.
 
+    Registration and sign-in live in ``AuthService``, also exported here.
+
     Also implements the gateway's ``CredentialStore`` and ``BudgetGuard``
     ports, which is why the gateway needs no import of this module.
     """
@@ -82,25 +87,6 @@ class IdentityService:
         self._default_cap = default_monthly_cap_usd
 
     # -- accounts -----------------------------------------------------------
-
-    async def ensure_account(self, *, auth_subject: str, email: str | None) -> AccountView:
-        """Find or create the local account behind a verified token.
-
-        Runs in the shared session because the account row is what establishes
-        the identity that RLS is later keyed on.
-        """
-        async with self._db.shared() as session:
-            repo = AccountRepository(session)
-            account = await repo.by_auth_subject(auth_subject)
-            if account is None:
-                account = Account(auth_subject=auth_subject, email=email)
-                repo.add(account)
-                await session.flush()
-                budget = AiUsageBudget(owner_id=account.id, monthly_cap_usd=self._default_cap)
-                BudgetRepository(session).add(budget)
-            elif email is not None and account.email != email:
-                account.email = email
-            return _account_view(account)
 
     async def account(self, owner_id: uuid.UUID) -> AccountView:
         async with self._db.for_user(owner_id) as session:

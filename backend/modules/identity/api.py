@@ -9,13 +9,111 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, Response
+from pydantic import BaseModel, EmailStr, Field
 
-from app.dependencies import CurrentUser, Deps
-from modules.identity.public import SUGGESTED_MODELS, Provider
+from app.dependencies import REFRESH_COOKIE, CurrentUser, Deps, refresh_token_from
+from modules.identity.public import SUGGESTED_MODELS, Provider, Session
 
 router = APIRouter(tags=["identity"])
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1)
+
+
+class SignInRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1)
+
+
+class SessionResponse(BaseModel):
+    """What the client keeps.
+
+    The access token is returned in the body and held in memory. The refresh
+    token is NOT here — it goes back as an httpOnly cookie, so a cross-site
+    scripting bug cannot read it.
+    """
+
+    account_id: str
+    email: str
+    access_token: str
+    expires_in: int
+
+
+def _respond_with(session: Session, response: Response, deps: Deps) -> SessionResponse:
+    settings = deps.settings
+    response.set_cookie(
+        REFRESH_COOKIE,
+        session.refresh_token,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        # Strict: this cookie is only ever used by our own SPA calling our own
+        # API, so there is no cross-site flow to accommodate — and that closes
+        # the cross-site request forgery question outright.
+        samesite="strict",
+        path="/api/v1/auth",
+        max_age=settings.auth_refresh_token_ttl_days * 24 * 60 * 60,
+    )
+    return SessionResponse(
+        account_id=str(session.account_id),
+        email=session.email,
+        access_token=session.access_token,
+        expires_in=settings.auth_access_token_ttl_seconds,
+    )
+
+
+@router.post("/auth/register", status_code=201)
+async def register(body: RegisterRequest, response: Response, deps: Deps) -> SessionResponse:
+    """Create an account and sign in.
+
+    The address is not verified — nothing is sent to it yet. That has to be in
+    place before any notification feature ships.
+    """
+    session = await deps.auth.register(email=str(body.email), password=body.password)
+    return _respond_with(session, response, deps)
+
+
+@router.post("/auth/sign-in")
+async def sign_in(body: SignInRequest, response: Response, deps: Deps) -> SessionResponse:
+    session = await deps.auth.sign_in(email=str(body.email), password=body.password)
+    return _respond_with(session, response, deps)
+
+
+@router.post("/auth/refresh")
+async def refresh(
+    response: Response,
+    deps: Deps,
+    token: str | None = Depends(refresh_token_from),
+) -> SessionResponse:
+    """Exchange the refresh cookie for a new access token.
+
+    The old refresh token is retired in the same step, so a stolen one is
+    detectable: presenting a spent token revokes the whole chain.
+    """
+    from kernel.errors import UnauthenticatedError
+
+    if not token:
+        raise UnauthenticatedError("Please sign in again.")
+    session = await deps.auth.refresh(refresh_token=token)
+    return _respond_with(session, response, deps)
+
+
+@router.post("/auth/sign-out", status_code=204)
+async def sign_out(
+    response: Response, deps: Deps, token: str | None = Depends(refresh_token_from)
+) -> None:
+    """Idempotent, and never an error — signing out must always work."""
+    await deps.auth.sign_out(refresh_token=token)
+    response.delete_cookie(REFRESH_COOKIE, path="/api/v1/auth")
+
+
+@router.post("/auth/sign-out-everywhere", status_code=204)
+async def sign_out_everywhere(response: Response, user: CurrentUser, deps: Deps) -> None:
+    """Revokes every session for this account. The control after a scare."""
+    await deps.auth.sign_out_everywhere(user)
+    response.delete_cookie(REFRESH_COOKIE, path="/api/v1/auth")
 
 
 class CredentialRequest(BaseModel):

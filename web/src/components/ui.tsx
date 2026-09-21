@@ -6,7 +6,13 @@
  * to make cheap.
  */
 
-import type { ReactNode } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  useId,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 
 export function Button({
   children,
@@ -69,9 +75,24 @@ export function Field({
   hint?: string;
   children: ReactNode;
 }) {
+  const inputId = useId();
+  const hintId = useId();
+
+  // The hint is linked with aria-describedby and kept OUT of the <label>.
+  // Inside the label it would become part of the field's accessible name, so a
+  // screen reader would announce the whole sentence as the field's name
+  // instead of "Password", and then read it again as help.
+  const control = isValidElement(children)
+    ? cloneElement(children as ReactElement<Record<string, unknown>>, {
+        id: inputId,
+        ...(hint ? { "aria-describedby": hintId } : {}),
+      })
+    : children;
+
   return (
-    <label style={{ display: "block", marginBottom: 14 }}>
-      <span
+    <div style={{ marginBottom: 14 }}>
+      <label
+        htmlFor={inputId}
         style={{
           display: "block",
           fontWeight: 600,
@@ -80,17 +101,18 @@ export function Field({
         }}
       >
         {label}
-      </span>
-      {children}
+      </label>
+      {control}
       {hint && (
         <span
+          id={hintId}
           className="muted"
           style={{ display: "block", fontSize: 12.5, marginTop: 4 }}
         >
           {hint}
         </span>
       )}
-    </label>
+    </div>
   );
 }
 
