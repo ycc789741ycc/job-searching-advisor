@@ -23,12 +23,14 @@ from kernel.embeddings import cluster, embed
 from kernel.logging import get_logger
 from kernel.outbox import EventName, emit
 from modules.market.public import MarketService, PostingView, Visibility, band_from
+from modules.profile.public import ProfileService
 from modules.rolemap.domain import (
     MIN_POSTINGS_FOR_A_ROLE,
     BarBasis,
     RoleChange,
     blend,
     max_role_count,
+    rank_by_fit,
     reconcile,
 )
 from modules.rolemap.infra.models import Role, RoleLineage, RoleMember, RoleRequirement
@@ -61,6 +63,15 @@ class _DifficultyEstimate(BaseModel):
 
 
 @dataclass(frozen=True, slots=True)
+class _Group:
+    """One cluster of postings, before it is analysed into a role."""
+
+    keys: set[str]
+    postings: list[PostingView]
+    vectors: list[list[float]]
+
+
+@dataclass(frozen=True, slots=True)
 class RequirementView:
     statement: str
     weight: float
@@ -90,11 +101,13 @@ class RoleMapService:
         database: Database,
         *,
         market: MarketService,
+        profile: ProfileService,
         gateway: AiGateway,
         embedding_model: str,
     ) -> None:
         self._db = database
         self._market = market
+        self._profile = profile
         self._gateway = gateway
         self._embedding_model = embedding_model
 
@@ -150,24 +163,37 @@ class RoleMapService:
         Role ids survive: a goal or a saved fit pointing at a role must still
         find it after a crawl changes the underlying postings.
         """
-        groups = await self._group_postings(owner_id)
-        if not groups:
+        found = await self._group_postings(owner_id)
+        if not found:
             log.info("rolemap.nothing_to_cluster", owner_id=str(owner_id))
             return []
+
+        # Only the clusters closest to the profile are analysed on the user's
+        # key; the rest are left out, so roles they held are retired below.
+        keep = rank_by_fit(
+            await self._profile_vectors(owner_id), [group.vectors for group in found]
+        )
+        groups = [found[index] for index in keep]
+        log.info(
+            "rolemap.selected",
+            owner_id=str(owner_id),
+            clusters_found=len(found),
+            clusters_kept=len(groups),
+        )
 
         previous = await self._previous_members(owner_id)
         reconciliation = reconcile(
             previous=previous,
-            clusters=[keys for keys, _ in groups],
+            clusters=[group.keys for group in groups],
             new_id=lambda: str(uuid.uuid4()),
         )
 
         extraction_template = load_template("role_extraction", "v1")
         difficulty_template = load_template("difficulty_estimate", "v1")
 
-        for index, (keys, postings) in enumerate(groups):
+        for index, group in enumerate(groups):
             role_id = uuid.UUID(reconciliation.assignments[index])
-            block = _postings_block(postings)
+            block = _postings_block(group.postings)
 
             extracted = await self._gateway.run(
                 owner_id,
@@ -205,8 +231,8 @@ class RoleMapService:
             await self._store_role(
                 owner_id,
                 role_id=role_id,
-                keys=keys,
-                postings=postings,
+                keys=group.keys,
+                postings=group.postings,
                 extraction=extracted.value,
                 bar=bar,
                 bar_reasoning=difficulty.value.reasoning,
@@ -219,9 +245,7 @@ class RoleMapService:
 
     # -- internals ----------------------------------------------------------
 
-    async def _group_postings(
-        self, owner_id: uuid.UUID
-    ) -> list[tuple[set[str], list[PostingView]]]:
+    async def _group_postings(self, owner_id: uuid.UUID) -> list[_Group]:
         """Cluster this user's postings locally. No AI, no cost."""
         scope = await self._market.scope_with_vectors(owner_id, self._embedding_model)
         if len(scope) < MIN_POSTINGS_FOR_A_ROLE:
@@ -254,11 +278,25 @@ class RoleMapService:
         vectors = [v for _k, _p, v in scope if v is not None]
 
         result = cluster(vectors, min_cluster_size=MIN_POSTINGS_FOR_A_ROLE)
-        groups: list[tuple[set[str], list[PostingView]]] = []
+        groups: list[_Group] = []
         for cluster_id in result.cluster_ids:
             members = result.members(cluster_id)
-            groups.append(({keys[i] for i in members}, [postings[i] for i in members]))
+            groups.append(
+                _Group(
+                    keys={keys[i] for i in members},
+                    postings=[postings[i] for i in members],
+                    vectors=[vectors[i] for i in members],
+                )
+            )
         return groups
+
+    async def _profile_vectors(self, owner_id: uuid.UUID) -> list[list[float]]:
+        """The user's profile in the postings' embedding space: one vector per
+        evidence fact and per position held. Local and platform-paid."""
+        snapshot = await self._profile.snapshot(owner_id)
+        texts = [e.fact for e in snapshot.evidence if e.fact.strip()]
+        texts += [p.title for p in snapshot.positions if p.title.strip()]
+        return embed(texts, model_name=self._embedding_model)
 
     async def _previous_members(self, owner_id: uuid.UUID) -> dict[str, set[str]]:
         async with self._db.for_user(owner_id) as session:

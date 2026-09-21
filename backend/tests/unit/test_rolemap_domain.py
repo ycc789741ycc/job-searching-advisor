@@ -7,12 +7,14 @@ import itertools
 import pytest
 
 from modules.rolemap.domain import (
+    MAX_ROLES_ANALYZED,
     MIN_POSTINGS_FOR_A_ROLE,
     BarBasis,
     RoleChange,
     blend,
     max_role_count,
     overlap,
+    rank_by_fit,
     reconcile,
 )
 
@@ -147,12 +149,64 @@ def test_overlap_is_jaccard(left: set[str], right: set[str], expected: float) ->
 
 @pytest.mark.parametrize(
     ("postings", "expected"),
-    [(0, 0), (MIN_POSTINGS_FOR_A_ROLE - 1, 0), (MIN_POSTINGS_FOR_A_ROLE, 1), (10, 3)],
+    [
+        (0, 0),
+        (MIN_POSTINGS_FOR_A_ROLE - 1, 0),
+        (MIN_POSTINGS_FOR_A_ROLE, 1),
+        (10, 3),
+        (410, MAX_ROLES_ANALYZED),
+    ],
 )
-def test_no_more_roles_than_full_clusters_fit(postings: int, expected: int) -> None:
+def test_no_more_roles_than_full_clusters_fit_or_than_are_analysed(
+    postings: int, expected: int
+) -> None:
     assert max_role_count(postings) == expected
 
 
 def test_a_negative_posting_count_is_a_bug_not_zero_roles() -> None:
     with pytest.raises(ValueError, match="negative"):
         max_role_count(-1)
+
+
+# -- choosing which clusters are analysed -----------------------------------
+
+
+def _axis(index: int, weight: float = 1.0) -> list[float]:
+    vector = [0.0] * 16
+    vector[index] = weight
+    return vector
+
+
+def test_the_clusters_closest_to_the_profile_come_first() -> None:
+    profile = [_axis(2, 3.0), _axis(0, 1.0)]
+    clusters = [[_axis(0)] * 3, [_axis(1)] * 3, [_axis(2)] * 3]
+    assert rank_by_fit(profile, clusters) == [2, 0, 1]
+
+
+def test_no_more_than_ten_clusters_are_kept() -> None:
+    profile = [_axis(i, float(i)) for i in range(12)]
+    clusters = [[_axis(i)] * 3 for i in range(12)]
+    assert rank_by_fit(profile, clusters) == list(range(11, 1, -1))
+    assert len(rank_by_fit(profile, clusters)) == MAX_ROLES_ANALYZED
+
+
+def test_fewer_clusters_than_the_limit_are_all_kept() -> None:
+    clusters = [[_axis(i)] * 3 for i in range(4)]
+    assert sorted(rank_by_fit([_axis(0)], clusters)) == [0, 1, 2, 3]
+
+
+def test_equally_close_clusters_go_larger_first_then_in_order() -> None:
+    profile = [_axis(0)]
+    clusters = [[_axis(1)] * 3, [_axis(2)] * 5, [_axis(3)] * 3]
+    assert rank_by_fit(profile, clusters) == [1, 0, 2]
+
+
+def test_with_no_profile_the_largest_clusters_are_kept() -> None:
+    """A user who has connected nothing yet still gets a map."""
+    clusters = [[_axis(i)] * (3 + i) for i in range(12)]
+    assert rank_by_fit([], clusters) == list(range(11, 1, -1))
+
+
+def test_a_profile_in_another_embedding_space_is_a_bug() -> None:
+    with pytest.raises(ValueError, match="same length"):
+        rank_by_fit([[1.0, 0.0]], [[_axis(0)] * 3])
