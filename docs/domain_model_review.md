@@ -1,6 +1,6 @@
 # Domain Model Review: Job Searching Advisor
 
-A review of the proposed domain concepts (`job_searching_advisor_domain_concepts.excalidraw`), checked against the system intent (`intent.md`) and the prototype (`../Career Skills Analysis App/Career Advisor.dc.html`).
+A review of the proposed domain concepts (`job_searching_advisor_domain_concepts.excalidraw`), checked against the system intent (`intent.md`) and the prototype (`../prototype/Career Advisor.dc.html`).
 
 ## 1. What the proposed model says today
 
