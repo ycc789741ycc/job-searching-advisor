@@ -26,6 +26,10 @@ function runtimeConfig(): Plugin {
 
 export default defineConfig({
   plugins: [react(), runtimeConfig()],
+  // Outside the source tree and outside node_modules, which is root-owned in
+  // the image: the dev server runs unprivileged and has to write its
+  // dependency pre-bundle somewhere.
+  cacheDir: "/tmp/vite",
   server: { port: 5173, host: true },
   test: {
     globals: true,

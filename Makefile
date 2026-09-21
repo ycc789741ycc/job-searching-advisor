@@ -18,8 +18,22 @@ INFRA_COMPOSE   := infra/compose.yml
 APP_COMPOSE     := compose.app.yml
 NETWORK         := jsa_net
 
+# `make start-app DEV=1` layers compose.app.dev.yml on top: source is
+# bind-mounted and reloads on save. A dev convenience only — no gate or test
+# target ever reads it, and without DEV the app runs exactly as it ships.
+DEV ?=
+APP_DEV_COMPOSE := compose.app.dev.yml
+ifdef DEV
+APP_COMPOSE_FILES := -f $(APP_COMPOSE) -f $(APP_DEV_COMPOSE)
+# So a migration written a moment ago applies without a rebuild.
+MIGRATE_MOUNT     := -v $(PWD)/backend:/app:ro
+else
+APP_COMPOSE_FILES := -f $(APP_COMPOSE)
+MIGRATE_MOUNT     :=
+endif
+
 COMPOSE_INFRA := docker compose --env-file $(ENV_FILE) -f $(INFRA_COMPOSE)
-COMPOSE_APP   := docker compose --env-file $(ENV_FILE) -f $(APP_COMPOSE)
+COMPOSE_APP   := docker compose --env-file $(ENV_FILE) $(APP_COMPOSE_FILES)
 
 BACKEND_IMAGE       := jsa-backend:dev
 BACKEND_TOOLS_IMAGE := jsa-backend-tools:dev
@@ -84,7 +98,7 @@ start-infra: require-env
 # start-app depends on migrate: pending migrations run to completion BEFORE any
 # container serves traffic. A failed migration fails the start.
 start-app: require-env migrate
-	$(COMPOSE_APP) up -d
+	$(COMPOSE_APP) up -d --no-build
 	@echo "api on port $$(grep -E '^API_PUBLISHED_PORT=' $(ENV_FILE) | cut -d= -f2)," \
 	      "web on $$(grep -E '^WEB_PUBLISHED_PORT=' $(ENV_FILE) | cut -d= -f2)"
 
@@ -102,8 +116,8 @@ logs: require-env
 
 # Runs from the app image, as a one-off container, before anything serves.
 migrate: require-env
-	$(RUN_ON_NET) $(BACKEND_IMAGE) alembic -c alembic.ini upgrade head
-	$(RUN_ON_NET) $(BACKEND_IMAGE) python -m app.apply_job_schema
+	$(RUN_ON_NET) $(MIGRATE_MOUNT) $(BACKEND_IMAGE) alembic -c alembic.ini upgrade head
+	$(RUN_ON_NET) $(MIGRATE_MOUNT) $(BACKEND_IMAGE) python -m app.apply_job_schema
 
 # --- test -------------------------------------------------------------------
 

@@ -1,0 +1,56 @@
+# Development overlay: the app's own source, bind-mounted, reloading on save.
+#
+# Opt-in only, with `make start-app DEV=1`. It layers on compose.app.yml and
+# changes nothing else about how the app is built or run.
+#
+# The design guideline allows source bind-mounts as a dev convenience and
+# nowhere else, so nothing here touches the test tiers or the gates: those run
+# `docker run` against the built images, never this file.
+#
+# Mounts are read-only. The dependencies live outside the mounted paths
+# (/opt/venv for Python; node_modules is not mounted for the SPA), so the
+# host's own .venv or node_modules can never shadow the Linux builds in the
+# image.
+
+services:
+  api:
+    command:
+      - uvicorn
+      - app.api_main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - /app
+    volumes:
+      - ./backend:/app:ro
+
+  worker:
+    # watchfiles restarts the worker when Python source changes. It ships with
+    # uvicorn[standard], so this adds nothing to the image.
+    command: ["watchfiles", "--filter", "python", "python -m app.worker_main", "/app"]
+    volumes:
+      - ./backend:/app:ro
+
+  # Mounted, but deliberately NOT reloading. The crawler runs a crawl as soon as
+  # it starts, so restarting on every save would hit real job boards on every
+  # keystroke. Pick up a change with `make stop-app && make start-app DEV=1`.
+  crawler:
+    volumes:
+      - ./backend:/app:ro
+
+  # The Vite dev server with hot module replacement, in place of nginx serving a
+  # built bundle. It listens on 8080 — the port the production container uses —
+  # so the published port mapping in compose.app.yml applies unchanged.
+  web:
+    build:
+      target: tools
+    image: jsa-web-tools:dev
+    command: ["npx", "vite", "--host", "0.0.0.0", "--port", "8080", "--strictPort"]
+    volumes:
+      # Only what changes day to day. vite.config.ts or package.json changes
+      # need `make build-app`, because they change the dependencies.
+      - ./web/src:/app/src:ro
+      - ./web/index.html:/app/index.html:ro

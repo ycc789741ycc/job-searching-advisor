@@ -34,6 +34,31 @@ make start-infra          # compose up, wait healthy, then the least-privilege D
 make start-app            # runs migrations to completion first, then api/worker/crawler/web
 ```
 
+### Developing with live source
+
+```
+make start-app DEV=1
+```
+
+Layers `compose.app.dev.yml` on top: your checkout's `backend/` and
+`web/src` are bind-mounted read-only, and saving a file reloads what uses it —
+the api through uvicorn's reloader, the worker through `watchfiles`, and the SPA
+through the Vite dev server with hot module replacement, on the same port. A
+save typically shows up within a couple of seconds.
+
+- The **crawler** is mounted but does not reload, because it crawls as soon as
+  it starts and would hit real job boards on every save. Restart it with
+  `make stop-app && make start-app DEV=1`.
+- Changing **dependencies**, `vite.config.ts` or `package.json` still needs
+  `make build-app` — those live in the image, not the mount.
+- `make migrate DEV=1` (which `start-app DEV=1` runs first) applies a migration
+  you have just written, without a rebuild.
+
+This is a convenience and nothing more. `make test-unit`, `make test-integration`
+and the gates never read the overlay: they always run against the built images,
+so they test what ships. Without `DEV`, `start-app` runs exactly the production
+images with no mounts.
+
 Hostnames in `.env` are compose service names on the `jsa_net` network, not
 `localhost`. The only host-facing values are the `*_PUBLISHED_PORT` numbers,
 which are what your browser and any database client connect to.
