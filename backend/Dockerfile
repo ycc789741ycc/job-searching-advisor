@@ -44,8 +44,13 @@ ENV PYTHONUNBUFFERED=1 \
     # sentence-transformers caches models here; the volume is mounted for it.
     HF_HOME=/home/app/.cache/huggingface
 
+# The model cache is created here, owned by app, because compose mounts the
+# `modelcache` volume over it: Docker seeds an empty named volume with the
+# ownership of the directory it lands on, and a mount point missing from the
+# image is created root-owned — which the read-only, non-root worker can't write.
 RUN groupadd --gid 10001 app \
- && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin app
+ && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin app \
+ && install -d -o app -g app /home/app/.cache /home/app/.cache/huggingface
 
 COPY --from=deps /opt/venv /opt/venv
 
