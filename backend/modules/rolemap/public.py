@@ -23,17 +23,23 @@ from kernel.embeddings import cluster, embed
 from kernel.logging import get_logger
 from kernel.outbox import EventName, emit
 from modules.market.public import MarketService, PostingView, Visibility, band_from
-from modules.rolemap.domain import BarBasis, RoleChange, blend, reconcile
+from modules.rolemap.domain import (
+    MIN_POSTINGS_FOR_A_ROLE,
+    BarBasis,
+    RoleChange,
+    blend,
+    max_role_count,
+    reconcile,
+)
 from modules.rolemap.infra.models import Role, RoleLineage, RoleMember, RoleRequirement
 
 __all__ = ["RequirementView", "RoleMapService", "RoleView"]
 
 log = get_logger(__name__)
 
-# Below this, there is nothing to cluster and no role worth naming.
-MIN_POSTINGS_FOR_A_ROLE = 3
 # The user's key is spent per cluster, so a first run has a predictable cost.
 MAX_POSTINGS_IN_A_PROMPT = 12
+MAX_DESCRIPTION_CHARS = 4000
 
 
 class _Requirement(BaseModel):
@@ -109,13 +115,19 @@ class RoleMapService:
             return [_role_view(role, tuple(by_role.get(role.id, ()))) for role in roles]
 
     async def estimate_cost(self, owner_id: uuid.UUID) -> dict[str, Any]:
-        """What a first role map would cost, before any money is spent."""
-        groups = await self._group_postings(owner_id)
-        if not groups:
-            return {"clusters": 0, "cost_usd": "0", "model_id": None}
+        """The most a first role map can cost, before any money is spent.
+
+        A ceiling, not a prediction: the api runs no embeddings or clustering,
+        so it prices the largest number of clusters these postings could form,
+        each sent with the costliest prompt they could fill.
+        """
+        postings = await self._market.postings_in_scope(owner_id)
+        max_clusters = max_role_count(len(postings))
+        if max_clusters == 0:
+            return {"max_clusters": 0, "cost_usd": "0", "model_id": None}
 
         template = load_template("role_extraction", "v1")
-        sample = _postings_block(groups[0][1])
+        sample = _postings_block(sorted(postings, key=_prompt_length, reverse=True))
         estimate = await self._gateway.estimate(
             owner_id,
             task="rolemap.extract",
@@ -124,9 +136,9 @@ class RoleMapService:
             untrusted=frozenset({"postings"}),
         )
         # Two calls per cluster: extraction, then the difficulty estimate.
-        total = estimate.cost_usd * len(groups) * 2
+        total = estimate.cost_usd * max_clusters * 2
         return {
-            "clusters": len(groups),
+            "max_clusters": max_clusters,
             "cost_usd": str(total.quantize(estimate.cost_usd)),
             "model_id": estimate.model_id,
             "rate_is_published": estimate.rate_is_published,
@@ -395,6 +407,16 @@ class RoleMapService:
             )
 
 
+def _prompt_length(posting: PostingView) -> int:
+    """How much of a prompt this posting fills, as ``_postings_block`` trims it."""
+    return (
+        len(posting.title)
+        + len(posting.company_name)
+        + len(posting.location or "")
+        + min(len(posting.description), MAX_DESCRIPTION_CHARS)
+    )
+
+
 def _postings_block(postings: list[PostingView]) -> str:
     """Untrusted posting text, trimmed so one cluster is one predictable call."""
     chunks = []
@@ -402,7 +424,7 @@ def _postings_block(postings: list[PostingView]) -> str:
         chunks.append(
             f"### {posting.title} — {posting.company_name}"
             f" ({posting.location or 'location not stated'})\n"
-            f"{posting.description[:4000]}"
+            f"{posting.description[:MAX_DESCRIPTION_CHARS]}"
         )
     return "\n\n".join(chunks)
 

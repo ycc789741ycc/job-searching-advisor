@@ -291,3 +291,51 @@ async def test_an_assessment_citing_evidence_the_user_lacks_is_rejected(
 
     with pytest.raises(EvidenceNotOwnedError, match="not in your profile"):
         await assessment.run(account)
+
+
+# -- the role map -----------------------------------------------------------
+
+
+async def test_the_role_map_estimate_runs_no_local_ml(
+    database: Database,
+    identity: IdentityService,
+    settings: Settings,
+    account: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The api prices a role map without embeddings or clustering — it has no
+    model cache, and a read-only filesystem to put one on."""
+    import modules.rolemap.public as rolemap_public
+    from modules.market.public import MarketService
+
+    def no_local_ml(*args: object, **kwargs: object) -> None:
+        raise AssertionError("the cost estimate must not embed or cluster")
+
+    monkeypatch.setattr(rolemap_public, "embed", no_local_ml)
+    monkeypatch.setattr(rolemap_public, "cluster", no_local_ml)
+
+    await identity.set_credential(
+        account, provider="anthropic", model="claude-opus-5", api_key="sk-test", base_url=None
+    )
+    market = MarketService(database, manual_refresh_per_day=3)
+    for i in range(7):
+        await market.paste_job_description(
+            account,
+            company_name=f"Company {i}",
+            title="Backend engineer",
+            location=None,
+            description="Python, Postgres and queues. " * (i + 1),
+        )
+    rolemap = RoleMapService(
+        database,
+        market=market,
+        gateway=AiGateway(settings=settings, credentials=identity, budget=identity),
+        embedding_model=settings.embedding_model_name,
+    )
+
+    estimate = await rolemap.estimate_cost(account)
+
+    # Seven postings can form at most two clusters of three.
+    assert estimate["max_clusters"] == 2
+    assert Decimal(estimate["cost_usd"]) > 0
+    assert estimate["model_id"] == "claude-opus-5"

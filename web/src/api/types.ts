@@ -118,7 +118,7 @@ export interface CostEstimate {
   cost_usd: string;
   model_id: string | null;
   input_tokens?: number;
-  clusters?: number;
+  max_clusters?: number;
   rate_is_published?: boolean;
 }
 
