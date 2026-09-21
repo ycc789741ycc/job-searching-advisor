@@ -1,6 +1,6 @@
 # Infra only: the datastore and object storage the app depends on.
 #
-# Application containers live in compose.app.yml, so `start-infra` and
+# Application containers live in compose.yaml, so `start-infra` and
 # `start-app` stay independent and neither can start the other.
 #
 # Image tags are pinned — never `latest` — and every value comes from .env.

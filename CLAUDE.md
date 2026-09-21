@@ -29,18 +29,33 @@ missing.
 ```
 cp .env.example .env      # fill in every blank; nothing has a default that matters
 make build-infra          # pull the pinned Postgres and MinIO images
-make build-app            # build the app image, the SPA image, and the tools layers
+make build-app            # build the prod images, plus the test images the gates use
 make start-infra          # compose up, wait healthy, then the least-privilege DB roles
 make start-app            # runs migrations to completion first, then api/worker/crawler/web
 ```
 
+`build-app`, `start-app` and `stop-app` take `MODE=dev|prod`, default `prod`;
+any other value fails. Each Dockerfile has three stages, each with its own tag:
+
+| Stage | Tag | Used by |
+|---|---|---|
+| `prod` | `jsa-*:prod` | `MODE=prod`: `compose.yaml` alone, nothing mounted. The only image CI or a deployed environment uses, and the one `scan` scans. |
+| `test` | `jsa-*:test` | Both test tiers and every gate, in either mode, never mounted. `build-app` builds it whichever mode you ask for. |
+| `dev` | `jsa-*:dev` | `MODE=dev`: `compose.yaml` + `compose.dev.yaml`, with the repo bind-mounted. Local only — never pushed, never deployed. |
+
+`start-app` never builds: if the image for the mode is missing it stops and tells
+you which `make build-app` to run. Both modes migrate first. Only one mode runs at
+a time — starting one replaces the other — and `stop-app` stops whichever is
+running. The app itself never reads `MODE`.
+
 ### Developing with live source
 
 ```
-make start-app DEV=1
+make build-app MODE=dev   # once, and again after a dependency change
+make start-app MODE=dev
 ```
 
-Layers `compose.app.dev.yml` on top: your checkout's `backend/` and
+Layers `compose.dev.yaml` on `compose.yaml`: your checkout's `backend/` and
 `web/src` are bind-mounted read-only, and saving a file reloads what uses it —
 the api through uvicorn's reloader, the worker through `watchfiles`, and the SPA
 through the Vite dev server with hot module replacement, on the same port. A
@@ -48,16 +63,15 @@ save typically shows up within a couple of seconds.
 
 - The **crawler** is mounted but does not reload, because it crawls as soon as
   it starts and would hit real job boards on every save. Restart it with
-  `make stop-app && make start-app DEV=1`.
-- Changing **dependencies**, `vite.config.ts` or `package.json` still needs
-  `make build-app` — those live in the image, not the mount.
-- `make migrate DEV=1` (which `start-app DEV=1` runs first) applies a migration
-  you have just written, without a rebuild.
+  `make stop-app && make start-app MODE=dev`.
+- Changing **dependencies**, `vite.config.ts` or `package.json` needs
+  `make build-app MODE=dev` — those live in the image, not the mount.
+- In dev, `migrate` (which `start-app` runs first) sees the mounted source, so a
+  migration you have just written applies without a rebuild.
 
-This is a convenience and nothing more. `make test-unit`, `make test-integration`
-and the gates never read the overlay: they always run against the built images,
-so they test what ships. Without `DEV`, `start-app` runs exactly the production
-images with no mounts.
+Every source mount in the repo lives in `compose.dev.yaml` and nowhere else — never
+as `-v` in a Makefile recipe. The overlay is deliberately not called
+`compose.override.yaml`, because compose would merge that into prod automatically.
 
 Hostnames in `.env` are compose service names on the `jsa_net` network, not
 `localhost`. The only host-facing values are the `*_PUBLISHED_PORT` numbers,
@@ -70,20 +84,32 @@ compose network and assumes infra is up and migrated — it tells you to run
 
 `make lint`, `make typecheck` and `make scan` are their own gates, never folded
 into a test target. `scan` covers Python dependencies, npm dependencies, and the
-application image itself.
+prod images themselves. It hands each image to Trivy as a `docker save` stream,
+rather than mounting the Docker socket, which would give the scanner root on the
+host.
 
 Supporting targets, never dependencies of the above: `migrate`, `format`,
 `gen-client`, `lock` (regenerates `backend/uv.lock` after a dependency change),
-`logs`, and `reset-data` (the only destructive one). `format` and the two
-generators are the only targets that mount source, because they write back to
-it; the gates and both test tiers never do.
+`logs`, and `reset-data` (the only destructive one).
+
+- `format` and `lock` write to source, so they run through `compose.dev.yaml`,
+  where the mounts live. They need the dev images (`make build-app MODE=dev`),
+  and they run as your own uid, so the files they rewrite stay yours.
+- `gen-client` mounts nothing. The OpenAPI document leaves one container on
+  stdout and enters the next on stdin, so it runs from the test images and works
+  in CI. Prettier is told not to touch the generated `schema.d.ts`; otherwise
+  `format` and `gen-client` would keep rewriting each other's output.
 
 Infra and the app are separate compose projects (`jsa-infra`, `jsa-app`) sharing
-the `jsa_net` network, so an app target can never remove an infra container.
+the `jsa_net` network, so an app target can never remove an infra container. App
+images carry `pull_policy: never`: they are built locally, and a missing one
+should fail rather than send compose to Docker Hub for a stranger's image of the
+same name.
 
-Images are pinned by version — never `latest` — in the `Dockerfile`s and compose
-files. Configuration arrives at run time through `--env-file`, so `build-app`
-produces one artifact that is promoted unchanged; the SPA gets its settings from
+Base and tool images are pinned by version — never `latest` — in the
+`Dockerfile`s and compose files. Configuration arrives at run time through
+`--env-file`, so `build-app` produces one prod artifact that is promoted
+unchanged; the SPA gets its settings from
 a `config.js` the container writes at start, which is why there are no `VITE_`
 variables.
 

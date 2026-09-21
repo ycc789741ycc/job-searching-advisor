@@ -20,7 +20,10 @@ const LABELS: Record<string, { name: string; note: string }> = {
 export function Connect({ callback }: { callback?: CallbackOutcome | null }) {
   // Refetched when a callback finishes, so a fresh connection shows as
   // connected without a reload.
-  const connections = useAsync<Connection[]>(() => api.get("/connections"), [callback]);
+  const connections = useAsync<Connection[]>(
+    () => api.get("/connections"),
+    [callback],
+  );
   const resumes = useAsync<ResumeFile[]>(() => api.get("/resumes"), []);
   const evidence = useAsync<Evidence[]>(() => api.get("/evidence"), []);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -75,11 +78,16 @@ export function Connect({ callback }: { callback?: CallbackOutcome | null }) {
         can be checked rather than taken on trust.
       </p>
       {callback?.connected && (
-        <p role="status" style={{ color: "var(--status-good)", fontSize: 13.5 }}>
+        <p
+          role="status"
+          style={{ color: "var(--status-good)", fontSize: 13.5 }}
+        >
           <span aria-hidden="true">✓</span> {callback.message}
         </p>
       )}
-      <ErrorNote error={callback && !callback.connected ? callback.message : error} />
+      <ErrorNote
+        error={callback && !callback.connected ? callback.message : error}
+      />
 
       {connections.loading ? (
         <Loading what="your sources" />

@@ -1,10 +1,15 @@
-# The application image.
+# The application image: one multi-stage Dockerfile, three images.
 #
-# `runtime` is what `start-app` runs and what gets promoted between
-# environments unchanged. `tools` is that same image plus the dev dependencies,
-# and it is what the test tiers and the gates run as one-off containers — so a
-# contributor never installs Python, uv, a linter or a migration CLI on their
-# machine.
+#   prod  production deps only, code baked in, non-root. What `make start-app`
+#         runs by default, what `make scan` scans, and the only image CI or a
+#         deployed environment ever uses.
+#   test  prod plus the test dependencies. Both test tiers and every gate run
+#         here, in either mode, never mounted.
+#   dev   test plus dev tooling, run by `make start-app MODE=dev` with the
+#         repo bind-mounted. Local only: never pushed, never deployed.
+#
+# `prod` is deliberately the LAST stage, so a bare `docker build` with no
+# --target yields the production image and never the dev one.
 #
 # Every tag here is pinned. Configuration arrives at run time via --env-file,
 # never baked in.
@@ -28,8 +33,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
 
 
-# --- runtime: the app image ------------------------------------------------
-FROM python:3.12.14-slim-bookworm AS runtime
+# --- base: the production contents -----------------------------------------
+# Internal. `test` builds on it, and `prod` at the end of the file re-tags it.
+FROM python:3.12.14-slim-bookworm AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -59,11 +65,11 @@ EXPOSE 8000
 CMD ["python", "-c", "print('specify a command')"]
 
 
-# --- tools: the app image plus dev dependencies ----------------------------
+# --- test: prod plus the test dependencies ---------------------------------
 # Tests, lint, typecheck, import contracts and the dependency audit all run
 # from here, so they exercise the same interpreter and the same source layout
 # the application runs with.
-FROM runtime AS tools
+FROM base AS test
 
 USER root
 COPY --from=ghcr.io/astral-sh/uv:0.12.17 /uv /bin/uv
@@ -83,3 +89,15 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # `chown -R` over a 1.5 GB tree would copy every file into this layer.
 
 USER app
+
+
+# --- dev: test plus dev tooling --------------------------------------------
+# What `make start-app MODE=dev` runs, with the repo bind-mounted over /app by
+# compose.dev.yaml. It carries the reloaders (watchfiles, uvicorn --reload) and
+# the tools `make format` and `make lock` use (ruff, uv). Never pushed.
+FROM test AS dev
+
+
+# --- prod: production deps only, code baked in, non-root -------------------
+# Last on purpose: the default target of a bare `docker build`.
+FROM base AS prod

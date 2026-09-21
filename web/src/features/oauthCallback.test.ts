@@ -3,7 +3,9 @@ import { completeCallback, parseCallback } from "./oauthCallback";
 
 describe("parseCallback", () => {
   it("reads code and state from a Jira callback", () => {
-    expect(parseCallback("/connections/jira/callback", "?code=abc&state=xyz")).toEqual({
+    expect(
+      parseCallback("/connections/jira/callback", "?code=abc&state=xyz"),
+    ).toEqual({
       kind: "jira",
       code: "abc",
       state: "xyz",
@@ -16,11 +18,16 @@ describe("parseCallback", () => {
   });
 
   it("ignores a connector we do not support", () => {
-    expect(parseCallback("/connections/linkedin/callback", "?code=a&state=b")).toBeNull();
+    expect(
+      parseCallback("/connections/linkedin/callback", "?code=a&state=b"),
+    ).toBeNull();
   });
 
   it("turns a declined consent into a sentence, not an error code", () => {
-    const result = parseCallback("/connections/jira/callback", "?error=access_denied");
+    const result = parseCallback(
+      "/connections/jira/callback",
+      "?error=access_denied",
+    );
     expect(result).toEqual({
       kind: "jira",
       error: "Access was not granted, so nothing was connected.",
@@ -32,7 +39,10 @@ describe("parseCallback", () => {
       "/connections/github/callback",
       "?error=redirect_uri_mismatch&error_description=The+redirect_uri+is+not+registered",
     );
-    expect(result).toEqual({ kind: "github", error: "The redirect_uri is not registered" });
+    expect(result).toEqual({
+      kind: "github",
+      error: "The redirect_uri is not registered",
+    });
   });
 
   it("treats a callback missing its state as incomplete rather than posting half of it", () => {
@@ -70,7 +80,10 @@ describe("completeCallback", () => {
     });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("http://api.test/api/v1/connections/jira/callback");
-    expect(JSON.parse(String(init.body))).toEqual({ code: "abc", state: "xyz" });
+    expect(JSON.parse(String(init.body))).toEqual({
+      code: "abc",
+      state: "xyz",
+    });
   });
 
   it("clears the URL before the request, because the code is single-use", async () => {
@@ -92,7 +105,10 @@ describe("completeCallback", () => {
 
   it("does not call the API when the person declined", async () => {
     const outcome = await completeCallback(
-      { pathname: "/connections/jira/callback", search: "?error=access_denied" },
+      {
+        pathname: "/connections/jira/callback",
+        search: "?error=access_denied",
+      },
       vi.fn(),
     );
     expect(outcome?.connected).toBe(false);
@@ -104,7 +120,10 @@ describe("completeCallback", () => {
       async () =>
         new Response(
           JSON.stringify({
-            error: { code: "upstream_failed", message: "jira rejected the authorization code" },
+            error: {
+              code: "upstream_failed",
+              message: "jira rejected the authorization code",
+            },
           }),
           { status: 502 },
         ),
@@ -122,7 +141,9 @@ describe("completeCallback", () => {
 
   it("does nothing on an ordinary page load", async () => {
     const replaceUrl = vi.fn();
-    expect(await completeCallback({ pathname: "/", search: "" }, replaceUrl)).toBeNull();
+    expect(
+      await completeCallback({ pathname: "/", search: "" }, replaceUrl),
+    ).toBeNull();
     expect(replaceUrl).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });

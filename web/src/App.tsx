@@ -7,7 +7,10 @@ import { Button, Loading } from "./components/ui";
 import { AiSettings } from "./features/AiSettings";
 import { Clarify } from "./features/Clarify";
 import { Connect } from "./features/Connect";
-import { completeCallback, type CallbackOutcome } from "./features/oauthCallback";
+import {
+  completeCallback,
+  type CallbackOutcome,
+} from "./features/oauthCallback";
 import { Roles } from "./features/Roles";
 import { Strengths } from "./features/Strengths";
 

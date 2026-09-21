@@ -1,0 +1,100 @@
+# Development overlay: MODE=dev. Layered on compose.yaml by
+# `make start-app MODE=dev`, and by the two targets that write to source
+# (`make format`, `make lock`).
+#
+# Every source bind-mount in the repo lives in this file and nowhere else:
+# never as `-v` in a Makefile recipe, never in how the test tiers or the gates
+# run. They run against the `test` image and never read this file.
+#
+# Named compose.dev.yaml, not compose.override.yaml: compose merges an override
+# file automatically, which would silently put these mounts into prod.
+#
+# The app's mounts are read-only. Dependencies live outside the mounted paths
+# (/opt/venv for Python; node_modules is never mounted for the SPA), so the
+# host's own .venv or node_modules cannot shadow the Linux builds in the image.
+
+x-backend-dev: &backend-dev
+  build:
+    target: dev
+  image: jsa-backend:dev
+
+services:
+  api:
+    <<: *backend-dev
+    command:
+      - uvicorn
+      - app.api_main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - /app
+    volumes:
+      - ./backend:/app:ro
+
+  worker:
+    <<: *backend-dev
+    # Restarts the worker when Python source changes. Ships with
+    # uvicorn[standard], so nothing is added to the image for it.
+    command: ["watchfiles", "--filter", "python", "python -m app.worker_main", "/app"]
+    volumes:
+      - ./backend:/app:ro
+
+  # Mounted, but deliberately NOT reloading. The crawler runs a crawl as soon as
+  # it starts, so restarting on every save would hit real job boards on every
+  # keystroke. Pick up a change with `make stop-app && make start-app MODE=dev`.
+  crawler:
+    <<: *backend-dev
+    volumes:
+      - ./backend:/app:ro
+
+  # So a migration written a moment ago applies without a rebuild.
+  migrate:
+    <<: *backend-dev
+    volumes:
+      - ./backend:/app:ro
+
+  # The Vite dev server with hot module replacement, from the dev stage's own
+  # command, on the same port the prod image listens on.
+  web:
+    build:
+      target: dev
+    image: jsa-web:dev
+    volumes:
+      # Only what changes day to day. vite.config.ts or package.json changes
+      # need `make build-app MODE=dev`, because they change the dependencies.
+      - ./web/src:/app/src:ro
+      - ./web/index.html:/app/index.html:ro
+
+  # --- tools that write back to source --------------------------------------
+  # Run only by `make format` and `make lock`, behind a profile so `up` never
+  # starts them. They run as the invoking user's uid (exported by the
+  # Makefile), so the files they rewrite stay owned by that user on every host.
+
+  backend-tools:
+    image: jsa-backend:dev
+    pull_policy: never
+    profiles: ["tools"]
+    user: "${HOST_UID:?run through make}:${HOST_GID:?run through make}"
+    # Its own bridge rather than jsa_net: formatting must not need infra up,
+    # and `uv lock` needs the package index.
+    network_mode: bridge
+    environment:
+      HOME: /tmp
+      # Resolving the lockfile must not touch a virtualenv in the mounted tree.
+      UV_PROJECT_ENVIRONMENT: /tmp/lockenv
+    volumes:
+      - ./backend:/app
+
+  web-tools:
+    image: jsa-web:dev
+    pull_policy: never
+    profiles: ["tools"]
+    user: "${HOST_UID:?run through make}:${HOST_GID:?run through make}"
+    network_mode: none
+    environment:
+      HOME: /tmp
+    volumes:
+      - ./web/src:/app/src

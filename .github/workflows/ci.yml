@@ -2,6 +2,9 @@
 #
 # It installs no language toolchain: every step is a container, so what runs here
 # and what runs on a laptop are the same images with the same pinned versions.
+#
+# MODE=prod throughout, stated rather than left to the default: prod is the only
+# mode CI or any deployed environment may use. The dev image is never built here.
 name: CI
 
 on:
@@ -23,7 +26,7 @@ jobs:
         run: ./.github/workflows/ci-env.sh
 
       - run: make build-infra
-      - run: make build-app
+      - run: make build-app MODE=prod
 
       - name: Lint
         run: make lint
@@ -36,7 +39,7 @@ jobs:
         run: make test-unit
 
       - run: make start-infra
-      - run: make migrate
+      - run: make migrate MODE=prod
 
       - name: Integration tests
         run: make test-integration
@@ -56,4 +59,4 @@ jobs:
 
       - name: Stop
         if: always()
-        run: make stop-app || true; make stop-infra || true
+        run: make stop-app MODE=prod || true; make stop-infra || true

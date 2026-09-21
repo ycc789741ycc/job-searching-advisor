@@ -19,7 +19,10 @@ export type CallbackParams =
   | { kind: ConnectorKind; error: string };
 
 /** What the current URL says, or null when this is not a callback. Pure. */
-export function parseCallback(pathname: string, search: string): CallbackParams | null {
+export function parseCallback(
+  pathname: string,
+  search: string,
+): CallbackParams | null {
   const match = CALLBACK_PATH.exec(pathname);
   const kind = match?.[1];
   if (!kind || !(CONNECTORS as readonly string[]).includes(kind)) return null;
@@ -45,7 +48,8 @@ export function parseCallback(pathname: string, search: string): CallbackParams 
 }
 
 function readableError(code: string): string {
-  if (code === "access_denied") return "Access was not granted, so nothing was connected.";
+  if (code === "access_denied")
+    return "Access was not granted, so nothing was connected.";
   return `The provider reported an error (${code}). Please connect again.`;
 }
 

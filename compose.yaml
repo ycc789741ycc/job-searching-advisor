@@ -1,13 +1,14 @@
-# The application: three backend services from one image, plus the SPA.
+# The application, as it ships. `make start-app` (MODE=prod, the default) runs
+# this file alone, with nothing mounted. `make start-app MODE=dev` layers
+# compose.dev.yaml on top.
 #
-# `build-app` builds these images; `start-app` runs them. `api`, `worker` and
-# `crawler` are the same `runtime` image with different commands — that is what
-# "one artifact promoted unchanged" means here.
+# `api`, `worker` and `crawler` are one image with three commands — that is
+# what "one artifact promoted unchanged" means here.
 #
 # Each service is given only the configuration it needs. `env_file` is
-# deliberately NOT on the shared anchor: handing every container the whole .env
+# deliberately NOT on a shared anchor: handing every container the whole .env
 # would put the master encryption key and the connector secrets inside the
-# crawler and the SPA, which section 4 forbids.
+# crawler and the SPA, which technical_boundaries section 4 forbids.
 #
 # The network is created by `start-infra`, which is why `start-app` needs infra
 # to be up and cannot bring it up itself.
@@ -21,26 +22,32 @@ networks:
     name: jsa_net
     external: true
 
-x-service: &service
-  restart: unless-stopped
+x-hardened: &hardened
   security_opt:
     - no-new-privileges:true
+  # These images are built locally by `make build-app`, never pulled. Without
+  # this, a missing tag sends compose to Docker Hub — at best a confusing error,
+  # at worst a stranger's public image that happens to share the name.
+  pull_policy: never
 
 x-backend: &backend
-  <<: *service
+  <<: *hardened
   build:
     context: ./backend
-    target: runtime
-  image: jsa-backend:dev
+    target: prod
+  image: jsa-backend:prod
   # These processes only ever write to the caches declared below.
   read_only: true
   tmpfs:
     - /tmp
 
+x-long-running: &long-running
+  restart: unless-stopped
+
 services:
   # Verifies tokens, serves HTTP, starts connector OAuth. Holds the master key.
   api:
-    <<: *backend
+    <<: [*backend, *long-running]
     env_file: .env
     command:
       - uvicorn
@@ -54,7 +61,7 @@ services:
 
   # Runs AI jobs and connector syncs. Holds the master key and connector tokens.
   worker:
-    <<: *backend
+    <<: [*backend, *long-running]
     env_file: .env
     command: ["python", "-m", "app.worker_main"]
     volumes:
@@ -67,7 +74,7 @@ services:
   # from .env, and require_for(Unit.CRAWLER) asserts at startup that this is
   # genuinely all it needs.
   crawler:
-    <<: *backend
+    <<: [*backend, *long-running]
     command: ["python", "-m", "app.crawler_main"]
     environment:
       APP_ENV: ${APP_ENV:?APP_ENV is required}
@@ -83,14 +90,24 @@ services:
     volumes:
       - modelcache:/home/app/.cache/huggingface
 
+  # A one-off: every pending migration to completion, then exit. `make migrate`
+  # runs it — as start-app's first step, in either mode — so the app never
+  # serves on a half-migrated database. Not long-running, and behind a profile
+  # so `up` never starts it.
+  migrate:
+    <<: *backend
+    profiles: ["migrate"]
+    env_file: .env
+    command: ["python", "-m", "app.migrate_main"]
+
   # Static bundle plus a config.js written at start. Everything it receives
   # reaches the browser, so it receives nothing else.
   web:
-    <<: *service
+    <<: [*hardened, *long-running]
     build:
       context: ./web
-      target: runtime
-    image: jsa-web:dev
+      target: prod
+    image: jsa-web:prod
     environment:
       WEB_API_BASE_URL: ${WEB_API_BASE_URL:?WEB_API_BASE_URL is required}
     ports:
