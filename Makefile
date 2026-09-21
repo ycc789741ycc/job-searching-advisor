@@ -121,7 +121,8 @@ test-integration: require-env
 lint:
 	$(RUN_HERMETIC) $(BACKEND_TOOLS_IMAGE) ruff check .
 	$(RUN_HERMETIC) $(BACKEND_TOOLS_IMAGE) ruff format --check .
-	$(RUN_HERMETIC) $(BACKEND_TOOLS_IMAGE) lint-imports --config .importlinter
+	$(RUN_HERMETIC) $(BACKEND_TOOLS_IMAGE) lint-imports --config .importlinter \
+	    --cache-dir /tmp/import-linter
 	$(RUN_HERMETIC) $(WEB_TOOLS_IMAGE) npx eslint src
 
 typecheck:

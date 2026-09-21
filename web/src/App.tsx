@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "./api/client";
 import type { Me } from "./api/types";
 import { useAuth } from "./auth/AuthProvider";
@@ -7,6 +7,7 @@ import { Button, Loading } from "./components/ui";
 import { AiSettings } from "./features/AiSettings";
 import { Clarify } from "./features/Clarify";
 import { Connect } from "./features/Connect";
+import { completeCallback, type CallbackOutcome } from "./features/oauthCallback";
 import { Roles } from "./features/Roles";
 import { Strengths } from "./features/Strengths";
 
@@ -41,6 +42,23 @@ function Shell() {
   const { email, signOut } = useAuth();
   const [screen, setScreen] = useState<Screen>("connect");
   const [me, setMe] = useState<Me | null>(null);
+  const [callback, setCallback] = useState<CallbackOutcome | null>(null);
+  const handled = useRef(false);
+
+  // Returning from GitHub or Jira lands on /connections/{kind}/callback.
+  // Handled once per page load: the code it carries is single-use.
+  useEffect(() => {
+    if (handled.current) return;
+    handled.current = true;
+    void completeCallback(window.location, (url) =>
+      window.history.replaceState(null, "", url),
+    ).then((outcome) => {
+      if (outcome) {
+        setScreen("connect");
+        setCallback(outcome);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     void api
@@ -119,7 +137,7 @@ function Shell() {
       )}
 
       <main>
-        {screen === "connect" && <Connect />}
+        {screen === "connect" && <Connect callback={callback} />}
         {screen === "clarify" && <Clarify />}
         {screen === "strengths" && <Strengths />}
         {screen === "roles" && <Roles />}

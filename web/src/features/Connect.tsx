@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import type { CallbackOutcome } from "./oauthCallback";
 import { api } from "../api/client";
 import type { Connection, Evidence, ResumeFile } from "../api/types";
 import { Button, EmptyState, ErrorNote, Loading } from "../components/ui";
@@ -16,8 +17,10 @@ const LABELS: Record<string, { name: string; note: string }> = {
 };
 
 /** Where evidence comes from: authorised sources and an uploaded resume. */
-export function Connect() {
-  const connections = useAsync<Connection[]>(() => api.get("/connections"), []);
+export function Connect({ callback }: { callback?: CallbackOutcome | null }) {
+  // Refetched when a callback finishes, so a fresh connection shows as
+  // connected without a reload.
+  const connections = useAsync<Connection[]>(() => api.get("/connections"), [callback]);
   const resumes = useAsync<ResumeFile[]>(() => api.get("/resumes"), []);
   const evidence = useAsync<Evidence[]>(() => api.get("/evidence"), []);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -71,7 +74,12 @@ export function Connect() {
         Everything the analysis says will point back at something here, so it
         can be checked rather than taken on trust.
       </p>
-      <ErrorNote error={error} />
+      {callback?.connected && (
+        <p role="status" style={{ color: "var(--status-good)", fontSize: 13.5 }}>
+          <span aria-hidden="true">✓</span> {callback.message}
+        </p>
+      )}
+      <ErrorNote error={callback && !callback.connected ? callback.message : error} />
 
       {connections.loading ? (
         <Loading what="your sources" />
