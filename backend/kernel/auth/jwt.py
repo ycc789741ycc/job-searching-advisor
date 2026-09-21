@@ -91,7 +91,7 @@ class TokenVerifier:
             # Deliberately vague to the caller; the detail is logged, not returned.
             raise UnauthenticatedError("token is not valid") from exc
 
-        # `nbf` is optional in Clerk tokens but honoured when present.
+        # `nbf` is optional (our own tokens omit it) but honoured when present.
         not_before = claims.get("nbf")
         if not_before is not None and time.time() + _LEEWAY_SECONDS < float(not_before):
             raise UnauthenticatedError("token is not valid yet")

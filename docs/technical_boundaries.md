@@ -2,7 +2,7 @@
 
 This doc turns the domain model in [`domain_model_review.md`](domain_model_review.md) into technical boundaries. It covers what gets deployed separately, who owns which data, where secrets can be decrypted, where untrusted input enters, and how modules talk to each other.
 
-**Constraints:** modular monolith plus workers · Python backend, TypeScript client · managed PaaS · solo or small-team MVP · local embedding model for clustering · managed auth provider.
+**Constraints:** modular monolith plus workers · Python backend, TypeScript client · managed PaaS · solo or small-team MVP · local embedding model for clustering · own email-and-password sign-in ([ADR 0001](decisions/0001-run-our-own-email-password-sign-in.md)).
 
 ## 1. Deployable units
 
@@ -11,7 +11,6 @@ flowchart LR
   subgraph Client
     SPA["web: React + Vite SPA (TS)"]
   end
-  Auth["Managed auth (Clerk / Auth0 / Supabase Auth)"]
   subgraph PaaS
     API["api: FastAPI modular monolith"]
     W["worker: job runner (queues: ai, sync, docs, notify)"]
@@ -24,8 +23,7 @@ flowchart LR
   SRC["GitHub / Jira / LinkedIn / personal sites"]
 
   SPA -- JWT --> API
-  SPA -- login --> Auth
-  API -- verify JWT --> Auth
+  SPA -- sign-in, refresh cookie --> API
   API --> DB
   W --> DB
   C -- market schema + outbox only --> DB
@@ -60,7 +58,7 @@ The four worker queues share one image for the MVP. Split them later by giving e
 | Documents | Playwright (PDF export), pypdf / python-docx (parsing) | |
 | Local ML | sentence-transformers + HDBSCAN | Works with every LLM provider, including Anthropic, which has no embeddings API |
 | Client | React + Vite, `openapi-typescript` client generated from FastAPI's OpenAPI | The API contract is the client/server boundary, checked in CI |
-| Auth | Managed provider issuing JWTs | Less security surface for a small team |
+| Auth | Own sign-in in `identity`: Argon2id, 15-minute HS256 access tokens, rotating refresh cookie | No external account needed to run the app; see [ADR 0001](decisions/0001-run-our-own-email-password-sign-in.md) |
 
 ## 2. Code boundaries inside the monolith
 
@@ -224,7 +222,7 @@ flowchart LR
 | T5 | Envelope encryption for the LLM key and connector tokens; master key only on `api` and `worker`; path to cloud KMS later |
 | T6 | A single AI gateway: budget check → decrypt → provider adapter → schema validation → usage ledger |
 | T7 | Local embeddings plus HDBSCAN for dedup and clustering; the LLM only names clusters and extracts requirements |
-| T8 | Managed auth provider; FastAPI verifies JWTs; login OAuth kept separate from connector OAuth |
+| T8 | ~~Managed auth provider~~ — **superseded by [ADR 0001](decisions/0001-run-our-own-email-password-sign-in.md)**: own email-and-password sign-in. Still true: FastAPI verifies JWTs on every request, and login is kept separate from connector OAuth |
 | T9 | Untrusted-input rules: parsing only in workers, delimited prompts, no side-effecting tools, schema-validated output, SSRF-guarded fetch including custom LLM base URLs |
 
 ### Coverage of domain decisions
@@ -249,7 +247,7 @@ flowchart LR
 | # | Question | Status |
 |---|---|---|
 | 1 | **PaaS choice** (Fly.io / Render / Railway) | **Still open.** Phase 1 runs on local Docker Compose, so the decision is deferred. It affects per-service secrets — the master key must be settable on `api` and `worker` only — and whether one Playwright-capable worker image fits the memory limit. |
-| 2 | **Auth provider** | **Answered: our own email and password, in `identity`** (revised from Clerk, which needs an external account). Argon2id hashes, time-based lockout after 5 failures, 15-minute access tokens held in memory, and rotating 30-day refresh tokens in an httpOnly `SameSite=Strict` cookie, stored hashed. A reused refresh token revokes its whole chain. `kernel/auth` verifies through a `SigningKeyResolver`, so moving to a hosted OpenID provider later is a wiring change, not a rewrite. **Not yet built, both blocked on Q3:** address verification and password reset. |
+| 2 | **Auth provider** | **Answered: our own email and password, in `identity`** — see [ADR 0001](decisions/0001-run-our-own-email-password-sign-in.md), which supersedes the earlier choice of Clerk (it needs an external account). Argon2id hashes, time-based lockout after 5 failures, 15-minute access tokens held in memory, and rotating 30-day refresh tokens in an httpOnly `SameSite=Strict` cookie, stored hashed. A reused refresh token revokes its whole chain. `kernel/auth` verifies through a `SigningKeyResolver`, so moving to a hosted OpenID provider later is a wiring change, not a rewrite. **Not yet built, both blocked on Q3:** address verification and password reset. |
 | 3 | **Email delivery** for digests and prompts | **Still open — and now on the critical path.** Beyond `MatchDigest` and interview-report prompts (Phase 2), owning sign-in means address verification and password reset both need it. Until then, anyone can register an address they do not own, and a forgotten password cannot be recovered. |
 
 ### Decided during Phase 1 implementation

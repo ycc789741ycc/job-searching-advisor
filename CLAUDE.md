@@ -15,6 +15,7 @@ that needs no model: crawling, parsing, embedding, clustering.
 | `docs/domain_model_review.md` | The domain model, bounded contexts and the 14 decisions behind them |
 | `docs/technical_boundaries.md` | Deployables, module boundaries, data and trust boundaries, the AI gateway |
 | `docs/plan.md` | Phase 1 / 2 / 3 scope |
+| `docs/decisions/` | Decision records for choices that are costly to reverse |
 
 The design guideline at `/Users/yoshi/repo/design-guideline` applies here too.
 
@@ -97,7 +98,7 @@ they run in CI. If one breaks, the design is wrong, not the contract.
   held only in memory, and rotating refresh tokens in an httpOnly
   `SameSite=Strict` cookie stored hashed. A reused refresh token revokes its
   whole chain. There is no address verification or password reset yet — both
-  wait on email delivery.
+  wait on email delivery. Why, and what it costs: `docs/decisions/0001`.
 - **The AI credential is write-only.** It can be set, tested, replaced or
   deleted; a read returns provider, model and the last four characters.
 - **Nothing reaches an LLM except through `kernel.ai_gateway`**, which estimates
