@@ -8,7 +8,19 @@
 
 import { loadConfig } from "../config";
 
-const BASE = loadConfig().apiBaseUrl;
+/**
+ * Resolved on first request, never at import time.
+ *
+ * Reading configuration while this module is being imported makes a bad value
+ * throw during the import graph's evaluation — before any error handling in
+ * main.tsx has had a chance to run — and the page renders nothing at all.
+ */
+let base: string | null = null;
+
+function apiBase(): string {
+  base ??= loadConfig().apiBaseUrl;
+  return base;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -37,7 +49,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("content-type", "application/json");
   }
 
-  const response = await fetch(`${BASE}/api/v1${path}`, { ...init, headers });
+  const response = await fetch(`${apiBase()}/api/v1${path}`, {
+    ...init,
+    headers,
+  });
 
   if (response.status === 204) return undefined as T;
 
