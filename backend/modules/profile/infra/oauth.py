@@ -41,14 +41,29 @@ GITHUB = ProviderEndpoints(
     extra_authorize_params={},
 )
 
-JIRA = ProviderEndpoints(
-    authorize_url="https://auth.atlassian.com/authorize",
-    token_url="https://auth.atlassian.com/oauth/token",  # noqa: S106 - a URL
-    scopes=("read:jira-work", "read:jira-user", "offline_access"),
-    extra_authorize_params={"audience": "api.atlassian.com", "prompt": "consent"},
-)
 
-ENDPOINTS: dict[str, ProviderEndpoints] = {"github": GITHUB, "jira": JIRA}
+def jira_endpoints(oauth_base: str) -> ProviderEndpoints:
+    """Atlassian's endpoints, rooted at the configured JIRA_OAUTH_BASE_URL.
+
+    Built from configuration rather than a literal host, so the value in .env
+    is the one actually used — pointing it at a test double works, and there is
+    no second copy of the host to drift out of step.
+    """
+    base = oauth_base.rstrip("/")
+    return ProviderEndpoints(
+        authorize_url=f"{base}/authorize",
+        token_url=f"{base}/oauth/token",
+        scopes=("read:jira-work", "read:jira-user", "offline_access"),
+        extra_authorize_params={"audience": "api.atlassian.com", "prompt": "consent"},
+    )
+
+
+def endpoints_for(kind: str, *, jira_oauth_base: str) -> ProviderEndpoints:
+    if kind == "github":
+        return GITHUB
+    if kind == "jira":
+        return jira_endpoints(jira_oauth_base)
+    raise ValidationError(f"unknown connector {kind!r}", kind=kind)
 
 
 def sign_state(owner_id: uuid.UUID, kind: str, *, secret: str, now: float | None = None) -> str:
@@ -78,10 +93,15 @@ def verify_state(state: str, *, secret: str, now: float | None = None) -> tuple[
     return uuid.UUID(data["o"]), str(data["k"])
 
 
-def authorize_url(kind: str, *, client_id: str, redirect_uri: str, state: str) -> str:
-    endpoints = ENDPOINTS.get(kind)
-    if endpoints is None:
-        raise ValidationError(f"unknown connector {kind!r}", kind=kind)
+def authorize_url(
+    kind: str,
+    *,
+    jira_oauth_base: str,
+    client_id: str,
+    redirect_uri: str,
+    state: str,
+) -> str:
+    endpoints = endpoints_for(kind, jira_oauth_base=jira_oauth_base)
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
@@ -97,14 +117,13 @@ async def exchange_code(
     client: GuardedClient,
     kind: str,
     *,
+    jira_oauth_base: str,
     code: str,
     client_id: str,
     client_secret: str,
     redirect_uri: str,
 ) -> dict[str, Any]:
-    endpoints = ENDPOINTS.get(kind)
-    if endpoints is None:
-        raise ValidationError(f"unknown connector {kind!r}", kind=kind)
+    endpoints = endpoints_for(kind, jira_oauth_base=jira_oauth_base)
 
     response = await client.request(
         "POST",

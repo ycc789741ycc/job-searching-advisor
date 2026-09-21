@@ -24,8 +24,16 @@ router = APIRouter(tags=["profile"])
 
 
 def _redirect_uri(settings: Settings, kind: str) -> str:
-    """Built explicitly, because an f-string over an unset value would quietly
-    produce "None/connections/..." and fail at the provider instead of here."""
+    """Where the provider sends the browser back to: a page in the SPA.
+
+    It has to be the SPA, not this API. The provider redirects with a GET
+    carrying `code` and `state`, but exchanging them needs the user's access
+    token, which lives only in the SPA's memory. So the SPA receives the
+    redirect and POSTs both to `/connections/{kind}/callback` here.
+
+    Built explicitly, because an f-string over an unset value would quietly
+    produce "None/connections/..." and fail at the provider instead of here.
+    """
     base = must(settings.oauth_redirect_base_url, "OAUTH_REDIRECT_BASE_URL")
     return f"{base}/connections/{kind}/callback"
 
@@ -78,6 +86,7 @@ async def start_authorization(kind: str, user: CurrentUser, deps: Deps) -> dict[
     return {
         "url": authorize_url(
             kind,
+            jira_oauth_base=must(settings.jira_oauth_base_url, "JIRA_OAUTH_BASE_URL"),
             client_id=client_id,
             redirect_uri=_redirect_uri(settings, kind),
             state=sign_state(user, kind, secret=secret),
@@ -115,6 +124,7 @@ async def complete_authorization(
         token = await exchange_code(
             client,
             kind,
+            jira_oauth_base=must(settings.jira_oauth_base_url, "JIRA_OAUTH_BASE_URL"),
             code=body.code,
             client_id=client_id,
             client_secret=client_secret.get_secret_value(),

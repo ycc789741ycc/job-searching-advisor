@@ -10,11 +10,13 @@ from kernel.errors import UnauthenticatedError, ValidationError
 from modules.profile.infra.oauth import (
     STATE_TTL_SECONDS,
     authorize_url,
+    endpoints_for,
     sign_state,
     verify_state,
 )
 
 SECRET = "test-signing-secret"
+JIRA_BASE = "https://auth.atlassian.com"
 OWNER = uuid.UUID("11111111-1111-1111-1111-111111111111")
 
 
@@ -57,6 +59,7 @@ def test_garbage_is_refused_rather_than_crashing() -> None:
 def test_the_authorize_url_carries_the_scopes_and_state() -> None:
     url = authorize_url(
         "github",
+        jira_oauth_base=JIRA_BASE,
         client_id="client-123",
         redirect_uri="https://app.test/callback",
         state="the-state",
@@ -68,11 +71,38 @@ def test_the_authorize_url_carries_the_scopes_and_state() -> None:
 
 
 def test_jira_asks_for_offline_access_so_the_weekly_sync_keeps_working() -> None:
-    url = authorize_url("jira", client_id="c", redirect_uri="https://app.test/cb", state="s")
+    url = authorize_url(
+        "jira",
+        jira_oauth_base=JIRA_BASE,
+        client_id="c",
+        redirect_uri="https://app.test/cb",
+        state="s",
+    )
     assert "offline_access" in url
     assert "audience=api.atlassian.com" in url
 
 
 def test_an_unknown_connector_is_refused() -> None:
     with pytest.raises(ValidationError, match="unknown connector"):
-        authorize_url("linkedin", client_id="c", redirect_uri="r", state="s")
+        authorize_url(
+            "linkedin", jira_oauth_base=JIRA_BASE, client_id="c", redirect_uri="r", state="s"
+        )
+
+
+def test_jira_uses_the_configured_oauth_host_not_a_literal() -> None:
+    """JIRA_OAUTH_BASE_URL used to be declared and silently ignored."""
+    endpoints = endpoints_for("jira", jira_oauth_base="https://auth.example.test/")
+    assert endpoints.authorize_url == "https://auth.example.test/authorize"
+    assert endpoints.token_url == "https://auth.example.test/oauth/token"
+
+
+def test_the_authorize_url_carries_the_redirect_the_provider_must_return_to() -> None:
+    """The redirect is the SPA's page, which forwards code and state to the API."""
+    url = authorize_url(
+        "jira",
+        jira_oauth_base=JIRA_BASE,
+        client_id="c",
+        redirect_uri="http://localhost:5173/connections/jira/callback",
+        state="s",
+    )
+    assert "redirect_uri=http%3A%2F%2Flocalhost%3A5173%2Fconnections%2Fjira%2Fcallback" in url

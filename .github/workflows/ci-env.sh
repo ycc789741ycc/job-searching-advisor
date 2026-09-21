@@ -60,7 +60,7 @@ set_value S3_REGION us-east-1
 set_value S3_BUCKET jsa-ci
 set_value S3_ACCESS_KEY_ID jsa-ci-access
 set_value S3_SECRET_ACCESS_KEY "$(pw)"
-set_value OAUTH_REDIRECT_BASE_URL http://localhost:8000
+set_value OAUTH_REDIRECT_BASE_URL http://localhost:5173
 set_value GITHUB_OAUTH_CLIENT_ID ci-github
 set_value GITHUB_OAUTH_CLIENT_SECRET "$(pw)"
 set_value GITHUB_API_BASE_URL https://api.github.com
