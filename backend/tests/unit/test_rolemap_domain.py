@@ -6,7 +6,15 @@ import itertools
 
 import pytest
 
-from modules.rolemap.domain import BarBasis, RoleChange, blend, overlap, reconcile
+from modules.rolemap.domain import (
+    MIN_POSTINGS_FOR_A_ROLE,
+    BarBasis,
+    RoleChange,
+    blend,
+    max_role_count,
+    overlap,
+    reconcile,
+)
 
 # -- hiring bar -------------------------------------------------------------
 
@@ -132,3 +140,19 @@ def test_the_first_clustering_gives_every_role_a_new_id() -> None:
 )
 def test_overlap_is_jaccard(left: set[str], right: set[str], expected: float) -> None:
     assert overlap(left, right) == pytest.approx(expected)
+
+
+# -- the cost ceiling -------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("postings", "expected"),
+    [(0, 0), (MIN_POSTINGS_FOR_A_ROLE - 1, 0), (MIN_POSTINGS_FOR_A_ROLE, 1), (10, 3)],
+)
+def test_no_more_roles_than_full_clusters_fit(postings: int, expected: int) -> None:
+    assert max_role_count(postings) == expected
+
+
+def test_a_negative_posting_count_is_a_bug_not_zero_roles() -> None:
+    with pytest.raises(ValueError, match="negative"):
+        max_role_count(-1)

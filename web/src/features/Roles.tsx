@@ -216,8 +216,9 @@ export function Roles() {
         <div className="card" style={{ maxWidth: 620, marginTop: 12 }}>
           <h3 style={{ marginTop: 0 }}>Before we spend anything</h3>
           <p className="secondary" style={{ fontSize: 14 }}>
-            Grouping {estimate.clusters ?? 0} clusters will cost about{" "}
-            <strong>${estimate.cost_usd}</strong> on {estimate.model_id}.
+            Naming up to {estimate.max_clusters ?? 0} roles will cost at most{" "}
+            <strong>${estimate.cost_usd}</strong> on {estimate.model_id} —
+            usually less, since postings rarely split into that many.
             Grouping itself runs on our machines; your key pays only for naming
             the roles and reading out what they require.
           </p>
