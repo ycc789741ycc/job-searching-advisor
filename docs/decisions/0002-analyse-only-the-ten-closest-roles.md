@@ -1,6 +1,6 @@
 # 0002. Analyse only the ten roles closest to the user's profile
 
-**Status:** Accepted — 2026-09-22
+**Status:** Superseded by [0003](0003-let-the-user-choose-how-many-roles-to-analyse.md) — 2026-09-22
 
 ## Context
 
