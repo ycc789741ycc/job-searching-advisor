@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from app.dependencies import CurrentUser, Deps
 from app.queue import enqueue
+from domain.assessment import DEFAULT_MATCHES, MAX_MATCHES, MIN_MATCHES
 
 router = APIRouter(tags=["assessment"])
 
@@ -83,6 +85,41 @@ async def fits(user: CurrentUser, deps: Deps) -> list[dict[str, object]]:
             "computed_at": f.created_at.isoformat(),
         }
         for f in await deps.assessment.fits(user)
+    ]
+
+
+@router.get("/matched-postings")
+async def matched_postings(
+    user: CurrentUser,
+    deps: Deps,
+    limit: Annotated[int, Query(ge=MIN_MATCHES, le=MAX_MATCHES)] = DEFAULT_MATCHES,
+) -> list[dict[str, object]]:
+    """The best openings inside the user's roles, for the role map's "Top
+    matched" list. Ranked by the role's fit; no AI runs to produce it."""
+    return [
+        {
+            "posting_id": str(m.posting_id),
+            "role_id": str(m.role_id),
+            "role_name": m.role_name,
+            "title": m.title,
+            "company_name": m.company_name,
+            "location": m.location,
+            "url": m.url,
+            "salary": (
+                {
+                    "min": m.salary.min_amount,
+                    "max": m.salary.max_amount,
+                    "currency": m.salary.currency,
+                }
+                if m.salary
+                else None
+            ),
+            # The role's fit: a posting's own requirements do not move it yet.
+            "fit": m.fit,
+            "fit_basis": "role",
+            "subscription_id": str(m.subscription_id) if m.subscription_id else None,
+        }
+        for m in await deps.assessment.matched_postings(user, limit=limit)
     ]
 
 

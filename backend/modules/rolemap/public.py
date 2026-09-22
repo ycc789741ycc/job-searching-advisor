@@ -137,6 +137,32 @@ class RoleMapService:
                 )
             return [_role_view(role, tuple(by_role.get(role.id, ()))) for role in roles]
 
+    async def role_postings(self, owner_id: uuid.UUID) -> list[tuple[RoleView, list[PostingView]]]:
+        """Each analysed role with the open postings grouped into it.
+
+        Postings that have since expired, or left the user's scope, drop out:
+        membership is resolved against the current scope, not stored copies.
+        """
+        roles = await self.roles(owner_id)
+        if not roles:
+            return []
+        async with self._db.for_user(owner_id) as session:
+            rows = await session.execute(
+                select(RoleMember.role_id, RoleMember.posting_key).where(
+                    RoleMember.owner_id == owner_id,
+                    RoleMember.role_id.in_([role.id for role in roles]),
+                )
+            )
+            keys_by_role: dict[uuid.UUID, list[str]] = {}
+            for role_id, key in rows.all():
+                keys_by_role.setdefault(role_id, []).append(key)
+
+        in_scope = {_posting_key(p): p for p in await self._market.postings_in_scope(owner_id)}
+        return [
+            (role, [in_scope[key] for key in keys_by_role.get(role.id, []) if key in in_scope])
+            for role in roles
+        ]
+
     async def role_count(self, owner_id: uuid.UUID) -> int:
         """How many roles this user's role map analyses (ADR 0003)."""
         async with self._db.for_user(owner_id) as session:
@@ -516,6 +542,11 @@ class RoleMapService:
                 {"roles": len(reconciliation.assignments)},
                 owner_id=owner_id,
             )
+
+
+def _posting_key(posting: PostingView) -> str:
+    """The key a posting is clustered under (see ``MarketService.scope_with_vectors``)."""
+    return f"private:{posting.id}" if posting.visibility is Visibility.PRIVATE else str(posting.id)
 
 
 def _prompt_length(posting: PostingView) -> int:

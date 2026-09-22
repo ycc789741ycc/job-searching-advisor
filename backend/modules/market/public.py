@@ -105,6 +105,8 @@ class PostingView:
     description: str
     visibility: Visibility
     salary: SalaryRange | None
+    # Shared postings only; a pasted JD names its company but has no row there.
+    company_id: uuid.UUID | None = None
 
 
 class CrawlIngest:
@@ -694,6 +696,7 @@ def _shared_posting_view(posting: JobPosting, company_name: str) -> PostingView:
         description=posting.description,
         visibility=Visibility.SHARED,
         salary=salary,
+        company_id=posting.company_id,
     )
 
 

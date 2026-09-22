@@ -124,6 +124,21 @@ export interface CostEstimate {
   rate_is_published?: boolean;
 }
 
+/** An opening inside one of the user's roles, ranked by that role's fit. */
+export interface MatchedPosting {
+  posting_id: string;
+  role_id: string;
+  role_name: string;
+  title: string;
+  company_name: string;
+  location: string | null;
+  url: string | null;
+  salary: { min: number; max: number; currency: string } | null;
+  fit: number | null;
+  fit_basis: "role";
+  subscription_id: string | null;
+}
+
 export interface RoleMapSettings {
   role_count: number;
 }
