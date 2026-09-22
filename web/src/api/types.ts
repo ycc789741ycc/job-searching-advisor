@@ -119,7 +119,13 @@ export interface CostEstimate {
   model_id: string | null;
   input_tokens?: number;
   max_clusters?: number;
+  /** The k this estimate was priced for (ADR 0003). */
+  role_count?: number;
   rate_is_published?: boolean;
+}
+
+export interface RoleMapSettings {
+  role_count: number;
 }
 
 export interface Subscription {

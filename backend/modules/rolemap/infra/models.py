@@ -111,3 +111,20 @@ class RoleLineage(Base, OwnedMixin):
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class RoleMapSetting(Base, OwnedMixin, TimestampMixin):
+    """How many roles this user's role map analyses (ADR 0003).
+
+    One row per user; no row means the default. The bound is a domain rule in
+    ``domain.rolemap``, checked before anything is stored here.
+    """
+
+    __tablename__ = "role_map_setting"
+    __table_args__ = (
+        UniqueConstraint("owner_id", name="uq_role_map_setting_owner_id"),
+        {"schema": "rolemap"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    role_count: Mapped[int] = mapped_column(Integer, nullable=False)

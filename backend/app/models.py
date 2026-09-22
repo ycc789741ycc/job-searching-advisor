@@ -44,6 +44,7 @@ from modules.profile.infra.models import (  # noqa: F401
 from modules.rolemap.infra.models import (  # noqa: F401
     Role,
     RoleLineage,
+    RoleMapSetting,
     RoleMember,
     RoleRequirement,
 )

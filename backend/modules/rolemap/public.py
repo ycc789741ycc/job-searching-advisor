@@ -16,24 +16,34 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from domain.rolemap import (
+    DEFAULT_ROLE_COUNT,
     MIN_POSTINGS_FOR_A_ROLE,
     BarBasis,
     RoleChange,
+    RoleCountError,
     blend,
     max_role_count,
     rank_by_fit,
     reconcile,
+    validate_role_count,
 )
 from kernel.ai_gateway import AiGateway
 from kernel.ai_gateway import load as load_template
 from kernel.db import Database
 from kernel.db.base import utcnow
 from kernel.embeddings import cluster, embed
+from kernel.errors import ValidationError
 from kernel.logging import get_logger
 from kernel.outbox import EventName, emit
 from modules.market.public import MarketService, PostingView, Visibility, band_from
 from modules.profile.public import ProfileService
-from modules.rolemap.infra.models import Role, RoleLineage, RoleMember, RoleRequirement
+from modules.rolemap.infra.models import (
+    Role,
+    RoleLineage,
+    RoleMapSetting,
+    RoleMember,
+    RoleRequirement,
+)
 
 __all__ = ["RequirementView", "RoleMapService", "RoleView"]
 
@@ -127,17 +137,55 @@ class RoleMapService:
                 )
             return [_role_view(role, tuple(by_role.get(role.id, ()))) for role in roles]
 
-    async def estimate_cost(self, owner_id: uuid.UUID) -> dict[str, Any]:
-        """The most a first role map can cost, before any money is spent.
+    async def role_count(self, owner_id: uuid.UUID) -> int:
+        """How many roles this user's role map analyses (ADR 0003)."""
+        async with self._db.for_user(owner_id) as session:
+            rows = await session.execute(
+                select(RoleMapSetting.role_count).where(RoleMapSetting.owner_id == owner_id)
+            )
+            stored = rows.scalar_one_or_none()
+        return DEFAULT_ROLE_COUNT if stored is None else stored
+
+    async def set_role_count(self, owner_id: uuid.UUID, role_count: int) -> int:
+        """Store the user's k. The caller has already shown the estimate for it
+        and had it confirmed, so a change queues a recluster."""
+        role_count = _checked(role_count)
+        async with self._db.for_user(owner_id) as session:
+            rows = await session.execute(
+                select(RoleMapSetting).where(RoleMapSetting.owner_id == owner_id)
+            )
+            setting = rows.scalar_one_or_none()
+            previous = DEFAULT_ROLE_COUNT if setting is None else setting.role_count
+            if setting is None:
+                session.add(RoleMapSetting(owner_id=owner_id, role_count=role_count))
+            else:
+                setting.role_count = role_count
+            if role_count != previous:
+                await emit(
+                    session,
+                    EventName.ROLE_COUNT_CHANGED,
+                    {"from": previous, "to": role_count},
+                    owner_id=owner_id,
+                )
+        log.info("rolemap.role_count_set", owner_id=str(owner_id), role_count=role_count)
+        return role_count
+
+    async def estimate_cost(
+        self, owner_id: uuid.UUID, *, role_count: int | None = None
+    ) -> dict[str, Any]:
+        """The most a role map can cost, before any money is spent.
 
         A ceiling, not a prediction: the api runs no embeddings or clustering,
         so it prices the largest number of clusters these postings could form,
-        each sent with the costliest prompt they could fill.
+        capped at the user's k — or at a proposed k, so the price of changing it
+        is shown before it is saved — each sent with the costliest prompt they
+        could fill.
         """
+        k = _checked(role_count) if role_count is not None else await self.role_count(owner_id)
         postings = await self._market.postings_in_scope(owner_id)
-        max_clusters = max_role_count(len(postings))
+        max_clusters = max_role_count(len(postings), k)
         if max_clusters == 0:
-            return {"max_clusters": 0, "cost_usd": "0", "model_id": None}
+            return {"max_clusters": 0, "role_count": k, "cost_usd": "0", "model_id": None}
 
         template = load_template("role_extraction", "v1")
         sample = _postings_block(sorted(postings, key=_prompt_length, reverse=True))
@@ -152,6 +200,7 @@ class RoleMapService:
         total = estimate.cost_usd * max_clusters * 2
         return {
             "max_clusters": max_clusters,
+            "role_count": k,
             "cost_usd": str(total.quantize(estimate.cost_usd)),
             "model_id": estimate.model_id,
             "rate_is_published": estimate.rate_is_published,
@@ -168,10 +217,12 @@ class RoleMapService:
             log.info("rolemap.nothing_to_cluster", owner_id=str(owner_id))
             return []
 
-        # Only the clusters closest to the profile are analysed on the user's
+        # Only the k clusters closest to the profile are analysed on the user's
         # key; the rest are left out, so roles they held are retired below.
         keep = rank_by_fit(
-            await self._profile_vectors(owner_id), [group.vectors for group in found]
+            await self._profile_vectors(owner_id),
+            [group.vectors for group in found],
+            limit=await self.role_count(owner_id),
         )
         groups = [found[index] for index in keep]
         log.info(
@@ -193,6 +244,12 @@ class RoleMapService:
 
         for index, group in enumerate(groups):
             role_id = uuid.UUID(reconciliation.assignments[index])
+            # The same postings as the last analysis: nothing for the key to
+            # redo. This is what makes lowering k free (ADR 0003).
+            if previous.get(str(role_id)) == group.keys and await self._keep_role(
+                owner_id, role_id=role_id, postings=group.postings
+            ):
+                continue
             block = _postings_block(group.postings)
 
             extracted = await self._gateway.run(
@@ -309,6 +366,22 @@ class RoleMapService:
             for role_id, key in rows.all():
                 previous.setdefault(str(role_id), set()).add(key)
             return previous
+
+    async def _keep_role(
+        self, owner_id: uuid.UUID, *, role_id: uuid.UUID, postings: list[PostingView]
+    ) -> bool:
+        """Keep an already-analysed role on the map, refreshing only what needs
+        no AI: its opening count and salary bands. ``False`` means there is no
+        analysed role to keep, and the cluster is analysed afresh."""
+        bands = await self._salary_bands(owner_id, postings)
+        async with self._db.for_user(owner_id) as session:
+            role = await session.get(Role, role_id)
+            if role is None:
+                return False
+            role.opening_count = len(postings)
+            role.salary_bands = bands
+            role.retired_at = None
+        return True
 
     async def _store_role(
         self,
@@ -485,3 +558,10 @@ def _role_view(role: Role, requirements: tuple[RequirementView, ...]) -> RoleVie
 def role_bar_is_estimate(role: RoleView) -> bool:
     """Estimated bubbles are drawn with a dashed outline."""
     return role.bar_basis == str(BarBasis.ESTIMATED)
+
+
+def _checked(role_count: int) -> int:
+    try:
+        return validate_role_count(role_count)
+    except RoleCountError as exc:
+        raise ValidationError(str(exc), role_count=role_count) from exc
