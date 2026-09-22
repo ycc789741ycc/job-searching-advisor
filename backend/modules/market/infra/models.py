@@ -131,15 +131,31 @@ class PostingEmbedding(Base):
 
 
 class CompanySubscription(Base, OwnedMixin, TimestampMixin):
+    """A RoleSubscription: a watch on one role at one company (domain decision 19).
+
+    The table keeps its original name, which the fan-out RLS policy is keyed on;
+    a user can watch several roles at the same company.
+    """
+
     __tablename__ = "company_subscription"
     __table_args__ = (
-        UniqueConstraint("owner_id", "company_id", name="uq_company_subscription_owner_id"),
+        UniqueConstraint(
+            "owner_id", "company_id", "role_title", name="uq_company_subscription_owner_id"
+        ),
         {"schema": "market_user"},
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
     company_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     company_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # The role's name when the user subscribed. Roles are per user and can be
+    # retired by a recluster, so the title is what persists; `role_id` points
+    # at the user's role while it exists.
+    role_title: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
+    role_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    # A careers page or JD link. It seeds board discovery and is never shown
+    # to the crawler with an owner attached.
+    url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     # `crawled` when a supported board was found, otherwise `manual`, which
     # offers "paste a JD" and is re-checked weekly (domain decision 13).
     coverage: Mapped[str] = mapped_column(String(16), nullable=False, server_default="manual")

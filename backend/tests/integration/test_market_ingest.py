@@ -185,3 +185,200 @@ async def test_the_manual_refresh_cap_is_enforced(database: Database, account: u
     await market.request_manual_refresh(account, company)
     with pytest.raises(RateLimitedError, match="weekly crawl still runs"):
         await market.request_manual_refresh(account, company)
+
+
+# -- role subscriptions (domain decision 19) --------------------------------
+
+
+async def test_a_user_can_watch_several_roles_at_one_company(
+    database: Database, account: uuid.UUID
+) -> None:
+    from modules.market.public import Coverage
+
+    market = MarketService(database, manual_refresh_per_day=3)
+    company = f"Kestrel {uuid.uuid4().hex[:8]}"
+
+    backend = await market.subscribe(
+        account, company_name=company, role_title="Senior Backend Engineer"
+    )
+    await market.set_coverage(account, backend.company_id, Coverage.CRAWLED)
+    platform = await market.subscribe(
+        account,
+        company_name=company,
+        role_title="Staff Platform Engineer",
+        url="https://jobs.lever.co/kestrel",
+    )
+    again = await market.subscribe(
+        account,
+        company_name=company,
+        role_title="Senior Backend Engineer",
+        url="https://boards.greenhouse.io/kestrel",
+    )
+
+    assert again.id == backend.id
+    assert again.url == "https://boards.greenhouse.io/kestrel"
+    assert platform.id != backend.id
+    # Coverage belongs to the company's board, so the new role starts from it.
+    assert platform.coverage is Coverage.CRAWLED
+    mine = [s for s in await market.subscriptions(account) if s.company_name == company]
+    assert sorted(s.role_title for s in mine) == [
+        "Senior Backend Engineer",
+        "Staff Platform Engineer",
+    ]
+
+
+async def test_unsubscribing_removes_only_that_role(
+    database: Database, account: uuid.UUID, other_account: uuid.UUID
+) -> None:
+    from kernel.errors import NotFoundError
+
+    market = MarketService(database, manual_refresh_per_day=3)
+    company = f"Fieldnote {uuid.uuid4().hex[:8]}"
+    keep = await market.subscribe(account, company_name=company, role_title="Full-Stack")
+    drop = await market.subscribe(account, company_name=company, role_title="Frontend")
+
+    # Another user can neither see nor remove it.
+    with pytest.raises(NotFoundError):
+        await market.subscription(other_account, drop.id)
+    await market.unsubscribe(other_account, drop.id)
+    assert (await market.subscription(account, drop.id)).id == drop.id
+
+    await market.unsubscribe(account, drop.id)
+    remaining = [s.id for s in await market.subscriptions(account) if s.company_name == company]
+    assert remaining == [keep.id]
+
+
+async def test_a_subscription_needs_a_role_and_a_web_link(
+    database: Database, account: uuid.UUID
+) -> None:
+    from kernel.errors import ValidationError
+
+    market = MarketService(database, manual_refresh_per_day=3)
+    with pytest.raises(ValidationError, match="role"):
+        await market.subscribe(account, company_name="Acme", role_title="  ")
+    with pytest.raises(ValidationError, match="http"):
+        await market.subscribe(
+            account, company_name="Acme", role_title="Engineer", url="file:///etc/passwd"
+        )
+
+
+async def test_a_company_change_reaches_each_watching_user_once(
+    database: Database, account: uuid.UUID, other_account: uuid.UUID
+) -> None:
+    """Two roles watched at one company still make one recluster, not two."""
+    from types import SimpleNamespace
+
+    from app.dispatcher import _users_affected_by
+
+    market = MarketService(database, manual_refresh_per_day=3)
+    company = f"Meridian {uuid.uuid4().hex[:8]}"
+    first = await market.subscribe(account, company_name=company, role_title="Staff Platform")
+    await market.subscribe(account, company_name=company, role_title="Senior Backend")
+    await market.subscribe(other_account, company_name=company, role_title="SRE")
+
+    affected = await _users_affected_by(
+        SimpleNamespace(database=database),  # type: ignore[arg-type]
+        {"company_id": str(first.company_id)},
+    )
+    assert sorted(affected) == sorted([account, other_account])
+
+
+async def test_a_link_reaches_board_discovery_without_its_owner(
+    database: Database,
+    account: uuid.UUID,
+    settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The crawler learns where to look, never who asked."""
+    from types import SimpleNamespace
+
+    import crawler.discovery
+    from crawler.discovery import DiscoveredBoard
+    from modules.market import jobs
+
+    market = MarketService(database, manual_refresh_per_day=3)
+    company = f"Northwind {uuid.uuid4().hex[:8]}"
+    subscription = await market.subscribe(
+        account,
+        company_name=company,
+        role_title="Senior Backend Engineer",
+        url="https://boards.greenhouse.io/northwind-test",
+    )
+
+    probed: list[tuple[str, str | None]] = []
+    endpoint = f"https://boards-api.greenhouse.io/v1/boards/{uuid.uuid4().hex}/jobs"
+
+    async def fake_probe(client, company_name, *, url=None, user_agent="*", **_):
+        probed.append((company_name, url))
+        return DiscoveredBoard(adapter_name="greenhouse", endpoint=endpoint, posting_count=1)
+
+    monkeypatch.setattr(crawler.discovery, "discover_board", fake_probe)
+    await jobs.discover_board(
+        SimpleNamespace(settings=settings, market=market, database=database),
+        owner_id=str(account),
+        company_id=str(subscription.company_id),
+        company_name=company,
+        url=subscription.url,
+    )
+
+    assert probed == [(company, "https://boards.greenhouse.io/northwind-test")]
+    async with database.shared() as session:
+        row = await session.execute(
+            text("SELECT * FROM market.crawl_source WHERE endpoint = :endpoint"),
+            {"endpoint": endpoint},
+        )
+        stored = row.mappings().one()
+    assert stored["company_id"] == subscription.company_id
+    assert not {"owner_id", "user_id", "url"} & set(stored.keys())
+    async with database.shared() as session:
+        await session.execute(
+            text("DELETE FROM market.crawl_source WHERE endpoint = :endpoint"),
+            {"endpoint": endpoint},
+        )
+
+
+async def test_the_weekly_recheck_sees_every_users_subscriptions(
+    database: Database,
+    account: uuid.UUID,
+    settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Materialising crawl sources must read across users — through the fan-out
+    policy — or it silently finds nothing to crawl."""
+    from types import SimpleNamespace
+
+    import crawler.discovery
+    from crawler.discovery import DiscoveredBoard
+    from modules.market import jobs
+
+    market = MarketService(database, manual_refresh_per_day=3)
+    company = f"Ostrom {uuid.uuid4().hex[:8]}"
+    await market.subscribe(
+        account,
+        company_name=company,
+        role_title="Platform Engineer",
+        url="https://jobs.ashbyhq.com/ostrom-test",
+    )
+    endpoint = f"https://api.ashbyhq.com/posting-api/job-board/{uuid.uuid4().hex}"
+    probed: list[tuple[str, str | None]] = []
+
+    async def fake_probe(client, company_name, *, url=None, user_agent="*", **_):
+        probed.append((company_name, url))
+        if company_name != company:
+            return None
+        return DiscoveredBoard(adapter_name="ashby", endpoint=endpoint, posting_count=1)
+
+    monkeypatch.setattr(crawler.discovery, "discover_board", fake_probe)
+    await jobs.materialize_crawl_sources(SimpleNamespace(settings=settings, database=database))
+
+    assert (company, "https://jobs.ashbyhq.com/ostrom-test") in probed
+    async with database.shared() as session:
+        found = await session.execute(
+            text("SELECT count(*) FROM market.crawl_source WHERE endpoint = :endpoint"),
+            {"endpoint": endpoint},
+        )
+        assert found.scalar_one() == 1
+        await session.execute(
+            text("DELETE FROM market.crawl_source WHERE endpoint = :endpoint"),
+            {"endpoint": endpoint},
+        )

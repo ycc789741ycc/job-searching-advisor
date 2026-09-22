@@ -128,9 +128,14 @@ export interface RoleMapSettings {
   role_count: number;
 }
 
+/** A watch on one role at one company (domain decision 19). */
 export interface Subscription {
+  id: string;
   company_id: string;
   company_name: string;
+  role_title: string;
+  role_id: string | null;
+  url: string | null;
   coverage: string;
   last_refreshed_at: string | null;
 }
