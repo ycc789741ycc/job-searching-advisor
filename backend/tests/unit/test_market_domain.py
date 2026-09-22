@@ -6,7 +6,7 @@ from datetime import date
 
 import pytest
 
-from modules.market.domain import (
+from domain.market import (
     NormalizedPosting,
     SalaryRange,
     SourceKind,

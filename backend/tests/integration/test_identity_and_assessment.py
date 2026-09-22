@@ -13,13 +13,13 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import text
 
+from domain.rolemap import MAX_ROLES_ANALYZED
 from kernel.ai_gateway import AiGateway
 from kernel.ai_gateway.providers import REGISTRY, Completion, Request
 from kernel.config import Settings
 from kernel.db import Database
 from modules.identity.public import IdentityService
 from modules.profile.public import ProfileService
-from modules.rolemap.domain import MAX_ROLES_ANALYZED
 from modules.rolemap.public import RoleMapService
 
 pytestmark = pytest.mark.integration

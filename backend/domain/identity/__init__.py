@@ -1,12 +1,12 @@
-from modules.identity.domain.budget import BudgetState, billing_month_start
-from modules.identity.domain.credential import (
+from domain.identity.budget import BudgetState, billing_month_start
+from domain.identity.credential import (
     SUGGESTED_MODELS,
     CredentialStatus,
     CredentialView,
     Provider,
     requires_base_url,
 )
-from modules.identity.domain.password import (
+from domain.identity.password import (
     LOCKOUT_WINDOW,
     MAX_FAILED_ATTEMPTS,
     MAX_PASSWORD_LENGTH,
@@ -16,7 +16,7 @@ from modules.identity.domain.password import (
     assert_acceptable,
     normalize_email,
 )
-from modules.identity.domain.tokens import (
+from domain.identity.tokens import (
     REFRESH_TOKEN_BYTES,
     RefreshRejectedError,
     RefreshTokenState,

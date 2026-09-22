@@ -11,6 +11,15 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from domain.identity import (
+    SUGGESTED_MODELS,
+    BudgetState,
+    CredentialStatus,
+    CredentialView,
+    Provider,
+    billing_month_start,
+    requires_base_url,
+)
 from kernel.ai_gateway.ports import ProviderCredential as GatewayCredential
 from kernel.ai_gateway.ports import UsageRecord
 from kernel.crypto import encrypt, last_four
@@ -25,15 +34,6 @@ from kernel.errors import (
 from kernel.fetch import assert_public_url
 from kernel.outbox import EventName, emit
 from modules.identity.auth import AuthService, Session
-from modules.identity.domain import (
-    SUGGESTED_MODELS,
-    BudgetState,
-    CredentialStatus,
-    CredentialView,
-    Provider,
-    billing_month_start,
-    requires_base_url,
-)
 from modules.identity.infra.models import (
     Account,
     AiUsageBudget,

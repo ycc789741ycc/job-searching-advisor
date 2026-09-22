@@ -1,4 +1,4 @@
-from modules.market.domain.posting import (
+from domain.market.posting import (
     Coverage,
     NormalizedPosting,
     PostingStatus,
@@ -10,7 +10,7 @@ from modules.market.domain.posting import (
     normalize,
     normalize_title,
 )
-from modules.market.domain.salary import CONFIDENT_SAMPLE_SIZE, SalaryBand, band_from
+from domain.market.salary import CONFIDENT_SAMPLE_SIZE, SalaryBand, band_from
 
 __all__ = [
     "CONFIDENT_SAMPLE_SIZE",

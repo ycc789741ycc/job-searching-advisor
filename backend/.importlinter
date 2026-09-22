@@ -7,6 +7,7 @@
 root_packages =
     app
     kernel
+    domain
     modules
     crawler
 include_external_packages = True
@@ -22,22 +23,17 @@ source_modules =
     modules.rolemap
     modules.assessment
 forbidden_modules =
-    modules.identity.domain
     modules.identity.infra
     modules.identity.api
-    modules.profile.domain
     modules.profile.infra
     modules.profile.api
     modules.profile.jobs
-    modules.market.domain
     modules.market.infra
     modules.market.api
     modules.market.jobs
-    modules.rolemap.domain
     modules.rolemap.infra
     modules.rolemap.api
     modules.rolemap.jobs
-    modules.assessment.domain
     modules.assessment.infra
     modules.assessment.api
     modules.assessment.jobs
@@ -45,29 +41,25 @@ forbidden_modules =
 # public.py is the design; typing `modules.rolemap.infra.models` is not.
 allow_indirect_imports = True
 
-# Rule 2: domain/ is pure. No infra, no kernel, no framework.
+# Rule 2: the domain model lives in one top-level domain/ folder, one package
+# per feature (design guideline, backend architecture: domain folder layout).
+# It is pure: no application code, no kernel, no framework.
 [importlinter:contract:pure-domain]
-name = domain/ imports no infra, kernel or framework
+name = domain/ imports no application code, kernel or framework
 type = forbidden
 source_modules =
-    modules.identity.domain
-    modules.profile.domain
-    modules.market.domain
-    modules.rolemap.domain
-    modules.assessment.domain
+    domain
 forbidden_modules =
+    app
     kernel
+    modules
+    crawler
     fastapi
     sqlalchemy
     httpx
     boto3
     procrastinate
     alembic
-    modules.identity.infra
-    modules.profile.infra
-    modules.market.infra
-    modules.rolemap.infra
-    modules.assessment.infra
 
 # Rule 3: the crawler is a separate deployable with a narrow surface.
 [importlinter:contract:crawler-surface]
@@ -85,7 +77,7 @@ forbidden_modules =
     modules.profile
     modules.rolemap
     modules.assessment
-    modules.market.domain
+    domain
     modules.market.infra
     modules.market.api
     modules.market.jobs
@@ -134,6 +126,7 @@ type = forbidden
 source_modules =
     kernel
 forbidden_modules =
+    domain
     modules
     crawler
     app
@@ -153,3 +146,79 @@ forbidden_modules =
 ignore_imports =
     modules.profile.api -> app.dependencies
     modules.profile.api -> app.queue
+
+# Rule 8: domain feature packages stay independent of one another. Nothing
+# crosses between them today; a concept two features need gets its own feature
+# package (the guideline's `domain/money/` case) rather than a link.
+[importlinter:contract:domain-features-independent]
+name = domain feature packages do not import each other
+type = independence
+modules =
+    domain.identity
+    domain.profile
+    domain.market
+    domain.rolemap
+    domain.assessment
+
+# Rule 9: a module uses only its own domain package. Another module's rules are
+# reached through that module's public.py (rule 1), never by importing its
+# domain package directly.
+[importlinter:contract:identity-own-domain-only]
+name = modules.identity imports only domain.identity
+type = forbidden
+source_modules =
+    modules.identity
+forbidden_modules =
+    domain.profile
+    domain.market
+    domain.rolemap
+    domain.assessment
+allow_indirect_imports = True
+
+[importlinter:contract:profile-own-domain-only]
+name = modules.profile imports only domain.profile
+type = forbidden
+source_modules =
+    modules.profile
+forbidden_modules =
+    domain.identity
+    domain.market
+    domain.rolemap
+    domain.assessment
+allow_indirect_imports = True
+
+[importlinter:contract:market-own-domain-only]
+name = modules.market imports only domain.market
+type = forbidden
+source_modules =
+    modules.market
+forbidden_modules =
+    domain.identity
+    domain.profile
+    domain.rolemap
+    domain.assessment
+allow_indirect_imports = True
+
+[importlinter:contract:rolemap-own-domain-only]
+name = modules.rolemap imports only domain.rolemap
+type = forbidden
+source_modules =
+    modules.rolemap
+forbidden_modules =
+    domain.identity
+    domain.profile
+    domain.market
+    domain.assessment
+allow_indirect_imports = True
+
+[importlinter:contract:assessment-own-domain-only]
+name = modules.assessment imports only domain.assessment
+type = forbidden
+source_modules =
+    modules.assessment
+forbidden_modules =
+    domain.identity
+    domain.profile
+    domain.market
+    domain.rolemap
+allow_indirect_imports = True

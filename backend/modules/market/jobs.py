@@ -12,10 +12,10 @@ from typing import Any
 
 from sqlalchemy import select
 
+from domain.market import Coverage, SourceKind
 from kernel.db.base import utcnow
 from kernel.fetch import GuardedClient
 from kernel.logging import get_logger
-from modules.market.domain import Coverage, SourceKind
 from modules.market.infra.models import Company, CompanySubscription, CrawlSource
 
 log = get_logger(__name__)

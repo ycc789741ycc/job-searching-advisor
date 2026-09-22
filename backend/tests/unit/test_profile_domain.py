@@ -6,7 +6,7 @@ from datetime import date
 
 import pytest
 
-from modules.profile.domain import (
+from domain.profile import (
     CitationError,
     Evidence,
     EvidenceSource,

@@ -5,7 +5,7 @@ Each adapter takes whatever shape a board happens to return and produces
 
 The crawler may import only ``modules.market.public`` (plus a few kernel
 pieces), which is why the value objects come from there rather than from
-``modules.market.domain``.
+``domain.market``.
 """
 
 from __future__ import annotations

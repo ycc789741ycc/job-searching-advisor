@@ -19,12 +19,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
-from kernel.auth import issue_access_token
-from kernel.db import Database
-from kernel.db.base import utcnow
-from kernel.errors import ConflictError, RateLimitedError, UnauthenticatedError, ValidationError
-from kernel.logging import get_logger
-from modules.identity.domain import (
+from domain.identity import (
     LockoutState,
     RefreshRejectedError,
     RefreshTokenState,
@@ -35,6 +30,11 @@ from modules.identity.domain import (
     normalize_email,
     refresh_token_expiry,
 )
+from kernel.auth import issue_access_token
+from kernel.db import Database
+from kernel.db.base import utcnow
+from kernel.errors import ConflictError, RateLimitedError, UnauthenticatedError, ValidationError
+from kernel.logging import get_logger
 from modules.identity.infra.auth_repository import AuthRepository, digest
 from modules.identity.infra.models import (
     Account,

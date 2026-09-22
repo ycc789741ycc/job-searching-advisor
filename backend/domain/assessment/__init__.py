@@ -1,4 +1,4 @@
-from modules.assessment.domain.dimensions import (
+from domain.assessment.dimensions import (
     MAX_DIMENSIONS,
     MIN_DIMENSIONS,
     DimensionCountError,
@@ -11,7 +11,7 @@ from modules.assessment.domain.dimensions import (
     dropped_ids,
     needs_follow_up,
 )
-from modules.assessment.domain.fit import (
+from domain.assessment.fit import (
     FitResult,
     SkillGap,
     TargetScore,
