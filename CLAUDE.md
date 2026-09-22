@@ -130,7 +130,7 @@ backend/
 web/          React + Vite SPA
 ```
 
-Six `import-linter` contracts in `backend/.importlinter` enforce those boundaries, and
+Seven `import-linter` contracts in `backend/.importlinter` enforce those boundaries, and
 they run in CI. If one breaks, the design is wrong, not the contract.
 
 ## Things that are deliberate
@@ -168,7 +168,7 @@ In: accounts, GitHub and Jira connectors, résumé upload, LLM configuration,
 market data from ATS boards and pasted JDs, the strength report, the role map,
 and follow-up questions.
 
-Out, and why: `growth` (goals and gap plans) and `resume` (generation, versions,
+Out, and why: `gapplan` (gap plans per target) and `resume` (generation, versions,
 chat, export) are Phase 2/3. The hiring bar is `estimated` only — `InterviewReport`
 arrives with the reporting flow later. Google login is Phase 2, as our own
 OAuth exchange that issues our own session token.

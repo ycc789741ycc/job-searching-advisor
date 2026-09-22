@@ -137,3 +137,19 @@ forbidden_modules =
     modules
     crawler
     app
+
+# Rule 7: ingestion is deterministic (domain decision 18). A sync must never
+# spend the user's key, and the most hostile input — repositories, tickets,
+# uploaded files — never reaches a prompt from here.
+[importlinter:contract:profile-no-ai]
+name = profile never reaches the AI gateway
+type = forbidden
+source_modules =
+    modules.profile
+forbidden_modules =
+    kernel.ai_gateway
+# Indirect imports count, except the router's two edges into the composition
+# root, which wires every module together; that is wiring, not ingestion.
+ignore_imports =
+    modules.profile.api -> app.dependencies
+    modules.profile.api -> app.queue
