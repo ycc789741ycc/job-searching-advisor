@@ -88,7 +88,7 @@ web/                        # TS client
 3. `crawler/` may import only `kernel.db`, `kernel.fetch`, `kernel.embeddings`, `kernel.outbox` and `modules.market.public`.
 4. Only `kernel.ai_gateway` and `modules.profile.infra.connectors` may import `kernel.crypto`'s decrypt functions.
 5. `modules.*` never call an LLM SDK directly; they go through `kernel.ai_gateway`.
-6. **Proposed:** `modules.profile` never imports `kernel.ai_gateway`. Ingestion is deterministic (domain decision 18), so a sync can never spend the user's key and the most hostile input never reaches a prompt from there. Add it as a seventh `import-linter` contract.
+6. `modules.profile` never imports `kernel.ai_gateway`, directly or indirectly. Ingestion is deterministic (domain decision 18), so a sync can never spend the user's key and the most hostile input never reaches a prompt from there.
 
 ### Communication
 - **Queries** are synchronous in-process calls through `public.py`. For example, `resume` asks `assessment` for the current RoleFit.
