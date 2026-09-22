@@ -53,6 +53,13 @@ class SourceKind(StrEnum):
     PASTED = "pasted"
 
 
+class SourceOrigin(StrEnum):
+    """Why a source is crawled (domain decision 15) — never who asked for it."""
+
+    BASELINE = "baseline"
+    DEMAND = "demand"
+
+
 class Coverage(StrEnum):
     """Whether a watched company can be crawled at all (domain decision 13)."""
 

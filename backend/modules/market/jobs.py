@@ -12,7 +12,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from domain.market import Coverage, SourceKind
+from domain.market import Coverage, SourceKind, SourceOrigin
 from kernel.db.base import utcnow
 from kernel.fetch import GuardedClient
 from kernel.logging import get_logger
@@ -54,6 +54,7 @@ async def discover_board(
                         kind=found.adapter_name,
                         company_id=uuid.UUID(company_id),
                         endpoint=found.endpoint,
+                        origin=SourceOrigin.DEMAND,
                     )
                 )
     log.info("market.board_discovered", company=company_name, coverage=str(coverage))
@@ -143,7 +144,12 @@ async def materialize_crawl_sources(deps: Any) -> None:
             continue
         async with deps.database.shared() as session:
             session.add(
-                CrawlSource(kind=found.adapter_name, company_id=company_id, endpoint=found.endpoint)
+                CrawlSource(
+                    kind=found.adapter_name,
+                    company_id=company_id,
+                    endpoint=found.endpoint,
+                    origin=SourceOrigin.DEMAND,
+                )
             )
             added += 1
 
