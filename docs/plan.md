@@ -27,22 +27,15 @@ crawled — their terms forbid it, and LinkedIn has litigated it
 LinkedIn remains a *profile* connector (the user's own data, via OAuth) in a
 later phase — never a market data source.
 
-## Report Generation
-* Role map
-* Strength
+## Role Map
+## Assessment
 
 # Phase 2
+## Gap Plan
+## Resume Advisor
+
+# Phase 3
 ## Support OAuth login
 * Google — with sign-in now owned in `identity`, this is our own OAuth code
   exchange that establishes the account and issues *our* session token, not a
   provider-side toggle.
-
-## Jobs
-* Matching job from platform
-
-## Resume
-* Auto Generate new resume based on user's uploaded info and selected role
-
-# Phase 3
-## Resume
-* Interactively help user to modify their resume with chat
