@@ -69,6 +69,11 @@ async def _handle(deps: Container, event: OutboxEvent) -> None:
         await enqueue("assessment.compute_fits", owner_id=str(owner_id))
         return
 
+    if name == EventName.ROLE_COUNT_CHANGED and owner_id:
+        # The user confirmed the estimate for the new k before saving it.
+        await enqueue("rolemap.recluster", owner_id=str(owner_id))
+        return
+
     if name == EventName.ROLE_REQUIREMENTS_CHANGED and owner_id:
         await enqueue("assessment.compute_fits", owner_id=str(owner_id))
         return

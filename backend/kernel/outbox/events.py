@@ -31,6 +31,7 @@ class EventName(StrEnum):
     ROLES_RECLUSTERED = "RolesReclustered"
     ROLE_REQUIREMENTS_CHANGED = "RoleRequirementsChanged"
     ROLE_SPLIT_OR_MERGED = "RoleSplitOrMerged"
+    ROLE_COUNT_CHANGED = "RoleCountChanged"
     # Identity / AI
     ANALYSIS_COST_ESTIMATED = "AnalysisCostEstimated"
     ANALYSIS_COST_CONFIRMED = "AnalysisCostConfirmed"

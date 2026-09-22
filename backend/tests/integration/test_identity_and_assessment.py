@@ -13,7 +13,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import text
 
-from domain.rolemap import MAX_ROLES_ANALYZED
+from domain.rolemap import DEFAULT_ROLE_COUNT
 from kernel.ai_gateway import AiGateway
 from kernel.ai_gateway.providers import REGISTRY, Completion, Request
 from kernel.config import Settings
@@ -341,6 +341,7 @@ async def test_the_role_map_estimate_runs_no_local_ml(
 
     # Seven postings can form at most two clusters of three.
     assert estimate["max_clusters"] == 2
+    assert estimate["role_count"] == DEFAULT_ROLE_COUNT
     assert Decimal(estimate["cost_usd"]) > 0
     assert estimate["model_id"] == "claude-opus-5"
 
@@ -399,7 +400,7 @@ async def test_a_role_map_analyses_only_the_ten_clusters_closest_to_the_profile(
         answer=" ".join(f"group-{g} " * g for g in range(2, 12)),
     )
 
-    for group in range(MAX_ROLES_ANALYZED):
+    for group in range(DEFAULT_ROLE_COUNT):
         stub_provider.replies.append(
             json.dumps(
                 {
@@ -423,11 +424,90 @@ async def test_a_role_map_analyses_only_the_ten_clusters_closest_to_the_profile(
     )
     roles = await rolemap.recluster(account)
 
-    assert len(roles) == MAX_ROLES_ANALYZED
-    assert len(stub_provider.calls) == 2 * MAX_ROLES_ANALYZED
+    assert len(roles) == DEFAULT_ROLE_COUNT
+    assert len(stub_provider.calls) == 2 * DEFAULT_ROLE_COUNT
     analysed = {
         match.group(1)
         for call in stub_provider.calls
         if (match := re.search(r"group-(\d+)", call.user)) is not None
     }
     assert analysed == {str(g) for g in range(2, 12)}
+
+    # Lowering k keeps the closest of those roles and spends nothing (ADR 0003).
+    await rolemap.set_role_count(account, 4)
+    fewer = await rolemap.recluster(account)
+    assert len(fewer) == 4
+    assert {r.name for r in fewer} <= {r.name for r in roles}
+    assert len(stub_provider.calls) == 2 * DEFAULT_ROLE_COUNT
+
+    # Raising it again brings back roles already analysed, still without spending.
+    await rolemap.set_role_count(account, 6)
+    more = await rolemap.recluster(account)
+    assert len(more) == 6
+    assert {r.id for r in fewer} <= {r.id for r in more}
+    assert len(stub_provider.calls) == 2 * DEFAULT_ROLE_COUNT
+
+
+# -- the user's k -------------------------------------------------------------
+
+
+async def test_k_has_a_default_is_stored_per_user_and_changes_the_ceiling(
+    database: Database,
+    identity: IdentityService,
+    profile: ProfileService,
+    settings: Settings,
+    account: uuid.UUID,
+    other_account: uuid.UUID,
+) -> None:
+    from kernel.errors import ValidationError
+    from modules.market.public import MarketService
+
+    await identity.set_credential(
+        account, provider="anthropic", model="claude-opus-5", api_key="sk-test", base_url=None
+    )
+    market = MarketService(database, manual_refresh_per_day=3)
+    for i in range(60):
+        await market.paste_job_description(
+            account,
+            company_name=f"Company {i}",
+            title="Backend engineer",
+            location=None,
+            description="Python, Postgres and queues.",
+        )
+    rolemap = RoleMapService(
+        database,
+        market=market,
+        profile=profile,
+        gateway=AiGateway(settings=settings, credentials=identity, budget=identity),
+        embedding_model=settings.embedding_model_name,
+    )
+
+    assert await rolemap.role_count(account) == DEFAULT_ROLE_COUNT
+    default = await rolemap.estimate_cost(account)
+    assert default["max_clusters"] == DEFAULT_ROLE_COUNT
+
+    # A proposed k is priced without being saved.
+    proposed = await rolemap.estimate_cost(account, role_count=20)
+    assert proposed["max_clusters"] == 20
+    assert Decimal(proposed["cost_usd"]) == 2 * Decimal(default["cost_usd"])
+    assert await rolemap.role_count(account) == DEFAULT_ROLE_COUNT
+
+    await rolemap.set_role_count(account, 5)
+    assert await rolemap.role_count(account) == 5
+    assert (await rolemap.estimate_cost(account))["max_clusters"] == 5
+    # Row-level security: another user's k is untouched.
+    assert await rolemap.role_count(other_account) == DEFAULT_ROLE_COUNT
+
+    with pytest.raises(ValidationError):
+        await rolemap.set_role_count(account, 21)
+    assert await rolemap.role_count(account) == 5
+
+    async with database.for_user(account) as session:
+        changed = await session.execute(
+            text(
+                "SELECT payload FROM outbox.event "
+                "WHERE owner_id = :owner AND name = 'RoleCountChanged'"
+            ),
+            {"owner": account},
+        )
+        assert [row["to"] for row in changed.scalars()] == [5]

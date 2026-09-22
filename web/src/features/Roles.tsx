@@ -4,6 +4,7 @@ import type {
   CostEstimate,
   Fit,
   Role,
+  RoleMapSettings,
   SalaryBand,
   Subscription,
 } from "../api/types";
@@ -17,9 +18,18 @@ import {
 } from "../components/ui";
 import { messageOf, useAsync } from "./useAsync";
 
+// The bound the api enforces on k (ADR 0003). The api is the authority; these
+// only keep the input from offering a value it would refuse.
+const MIN_ROLE_COUNT = 3;
+const MAX_ROLE_COUNT = 20;
+
 /** The role map: which roles exist in this user's market, and how they fit. */
 export function Roles() {
   const roles = useAsync<Role[]>(() => api.get("/roles"), []);
+  const settings = useAsync<RoleMapSettings>(
+    () => api.get("/roles/settings"),
+    [],
+  );
   const fits = useAsync<Fit[]>(() => api.get("/fits"), []);
   const subscriptions = useAsync<Subscription[]>(
     () => api.get("/company-subscriptions"),
@@ -30,6 +40,10 @@ export function Roles() {
   const [company, setCompany] = useState("");
   const [market, setMarket] = useState("");
   const [estimate, setEstimate] = useState<CostEstimate | null>(null);
+  // The k being considered; saved only once its estimate is confirmed.
+  const [roleCount, setRoleCount] = useState<number | null>(null);
+  const savedRoleCount = settings.data?.role_count;
+  const chosenRoleCount = roleCount ?? savedRoleCount;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [queued, setQueued] = useState<string | null>(null);
@@ -173,6 +187,30 @@ export function Roles() {
             </ul>
           </div>
 
+          <div style={{ flex: "0 1 150px" }}>
+            <label
+              style={{ fontSize: 13.5, fontWeight: 600 }}
+              htmlFor="role-count-input"
+            >
+              Roles to analyse
+            </label>
+            <input
+              id="role-count-input"
+              type="number"
+              min={MIN_ROLE_COUNT}
+              max={MAX_ROLE_COUNT}
+              style={{ ...inputStyle, marginTop: 4 }}
+              value={chosenRoleCount ?? ""}
+              onChange={(event) => {
+                setRoleCount(Number(event.target.value));
+                setEstimate(null);
+              }}
+            />
+            <p className="muted" style={{ fontSize: 12.5, margin: "6px 0 0" }}>
+              {MIN_ROLE_COUNT}–{MAX_ROLE_COUNT}; more roles cost more
+            </p>
+          </div>
+
           <div style={{ display: "flex", gap: 8 }}>
             <Button
               busy={busy}
@@ -181,7 +219,11 @@ export function Roles() {
                 setError(null);
                 try {
                   setEstimate(
-                    await api.get<CostEstimate>("/roles/cost-estimate"),
+                    await api.get<CostEstimate>(
+                      chosenRoleCount === undefined
+                        ? "/roles/cost-estimate"
+                        : `/roles/cost-estimate?role_count=${chosenRoleCount}`,
+                    ),
                   );
                 } catch (caught) {
                   setError(messageOf(caught));
@@ -216,19 +258,33 @@ export function Roles() {
         <div className="card" style={{ maxWidth: 620, marginTop: 12 }}>
           <h3 style={{ marginTop: 0 }}>Before we spend anything</h3>
           <p className="secondary" style={{ fontSize: 14 }}>
-            Your map covers the {estimate.max_clusters ?? 0} roles closest to
-            your profile. Naming them will cost at most{" "}
+            Your map covers up to {estimate.max_clusters ?? 0} of the{" "}
+            {estimate.role_count ?? chosenRoleCount} roles closest to your
+            profile. Naming them will cost at most{" "}
             <strong>${estimate.cost_usd}</strong> on {estimate.model_id} —
-            usually less, since postings may form fewer roles than that.
-            Grouping itself runs on our machines; your key pays only for naming
-            the roles and reading out what they require.
+            usually less, since postings may form fewer roles than that, and
+            roles already analysed are not paid for again. Grouping itself runs
+            on our machines; your key pays only for naming the roles and reading
+            out what they require.
           </p>
           <div style={{ display: "flex", gap: 8 }}>
             <Button
               busy={busy}
               onClick={() =>
                 act("role map queued", async () => {
-                  await api.post("/roles/recluster");
+                  if (
+                    chosenRoleCount !== undefined &&
+                    chosenRoleCount !== savedRoleCount
+                  ) {
+                    // Saving a new k queues the rebuild itself.
+                    await api.put("/roles/settings", {
+                      role_count: chosenRoleCount,
+                    });
+                    await settings.reload();
+                    setRoleCount(null);
+                  } else {
+                    await api.post("/roles/recluster");
+                  }
                   setEstimate(null);
                 })
               }

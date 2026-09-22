@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Query
+from pydantic import BaseModel, Field
 
 from app.dependencies import CurrentUser, Deps
 from app.queue import enqueue
+from domain.rolemap import MAX_ROLE_COUNT, MIN_ROLE_COUNT
 
 router = APIRouter(tags=["rolemap"])
+
+
+class RoleMapSettings(BaseModel):
+    """How many roles the role map analyses on the user's key (ADR 0003)."""
+
+    role_count: int = Field(ge=MIN_ROLE_COUNT, le=MAX_ROLE_COUNT)
 
 
 @router.get("/roles")
@@ -39,10 +49,27 @@ async def list_roles(user: CurrentUser, deps: Deps) -> list[dict[str, object]]:
     ]
 
 
+@router.get("/roles/settings")
+async def get_settings(user: CurrentUser, deps: Deps) -> RoleMapSettings:
+    return RoleMapSettings(role_count=await deps.rolemap.role_count(user))
+
+
+@router.put("/roles/settings")
+async def put_settings(body: RoleMapSettings, user: CurrentUser, deps: Deps) -> RoleMapSettings:
+    """Saved only after the user confirmed the estimate for this k, so a change
+    queues a recluster through ``RoleCountChanged``."""
+    return RoleMapSettings(role_count=await deps.rolemap.set_role_count(user, body.role_count))
+
+
 @router.get("/roles/cost-estimate")
-async def cost_estimate(user: CurrentUser, deps: Deps) -> dict[str, object]:
-    """Shown before the first role map, so nothing is spent unasked."""
-    return await deps.rolemap.estimate_cost(user)
+async def cost_estimate(
+    user: CurrentUser,
+    deps: Deps,
+    role_count: Annotated[int | None, Query(ge=MIN_ROLE_COUNT, le=MAX_ROLE_COUNT)] = None,
+) -> dict[str, object]:
+    """Shown before a role map runs, so nothing is spent unasked. Pass
+    ``role_count`` to price a k before saving it; omit it for the saved k."""
+    return await deps.rolemap.estimate_cost(user, role_count=role_count)
 
 
 @router.post("/roles/recluster", status_code=202)

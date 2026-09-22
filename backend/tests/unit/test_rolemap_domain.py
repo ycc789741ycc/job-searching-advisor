@@ -7,15 +7,19 @@ import itertools
 import pytest
 
 from domain.rolemap import (
-    MAX_ROLES_ANALYZED,
+    DEFAULT_ROLE_COUNT,
+    MAX_ROLE_COUNT,
     MIN_POSTINGS_FOR_A_ROLE,
+    MIN_ROLE_COUNT,
     BarBasis,
     RoleChange,
+    RoleCountError,
     blend,
     max_role_count,
     overlap,
     rank_by_fit,
     reconcile,
+    validate_role_count,
 )
 
 # -- hiring bar -------------------------------------------------------------
@@ -154,7 +158,7 @@ def test_overlap_is_jaccard(left: set[str], right: set[str], expected: float) ->
         (MIN_POSTINGS_FOR_A_ROLE - 1, 0),
         (MIN_POSTINGS_FOR_A_ROLE, 1),
         (10, 3),
-        (410, MAX_ROLES_ANALYZED),
+        (410, DEFAULT_ROLE_COUNT),
     ],
 )
 def test_no_more_roles_than_full_clusters_fit_or_than_are_analysed(
@@ -166,6 +170,44 @@ def test_no_more_roles_than_full_clusters_fit_or_than_are_analysed(
 def test_a_negative_posting_count_is_a_bug_not_zero_roles() -> None:
     with pytest.raises(ValueError, match="negative"):
         max_role_count(-1)
+
+
+# -- the user's k -------------------------------------------------------------
+
+
+def test_the_default_k_sits_inside_the_bound() -> None:
+    assert MIN_ROLE_COUNT <= DEFAULT_ROLE_COUNT <= MAX_ROLE_COUNT
+
+
+@pytest.mark.parametrize("role_count", [MIN_ROLE_COUNT, DEFAULT_ROLE_COUNT, MAX_ROLE_COUNT])
+def test_a_k_inside_the_bound_is_accepted(role_count: int) -> None:
+    assert validate_role_count(role_count) == role_count
+
+
+@pytest.mark.parametrize("role_count", [0, MIN_ROLE_COUNT - 1, MAX_ROLE_COUNT + 1, 1000])
+def test_a_k_outside_the_bound_is_refused(role_count: int) -> None:
+    """An unbounded k would put the cost back in proportion to the market."""
+    with pytest.raises(RoleCountError, match="between"):
+        validate_role_count(role_count)
+
+
+@pytest.mark.parametrize(
+    ("postings", "role_count", "expected"),
+    [
+        (410, MIN_ROLE_COUNT, MIN_ROLE_COUNT),
+        (410, MAX_ROLE_COUNT, MAX_ROLE_COUNT),
+        (10, MAX_ROLE_COUNT, 3),
+    ],
+)
+def test_the_cost_ceiling_follows_the_users_k(
+    postings: int, role_count: int, expected: int
+) -> None:
+    assert max_role_count(postings, role_count) == expected
+
+
+def test_the_cost_ceiling_refuses_a_k_outside_the_bound() -> None:
+    with pytest.raises(RoleCountError):
+        max_role_count(410, MAX_ROLE_COUNT + 1)
 
 
 # -- choosing which clusters are analysed -----------------------------------
@@ -183,11 +225,17 @@ def test_the_clusters_closest_to_the_profile_come_first() -> None:
     assert rank_by_fit(profile, clusters) == [2, 0, 1]
 
 
-def test_no_more_than_ten_clusters_are_kept() -> None:
+def test_by_default_no_more_than_ten_clusters_are_kept() -> None:
     profile = [_axis(i, float(i)) for i in range(12)]
     clusters = [[_axis(i)] * 3 for i in range(12)]
     assert rank_by_fit(profile, clusters) == list(range(11, 1, -1))
-    assert len(rank_by_fit(profile, clusters)) == MAX_ROLES_ANALYZED
+    assert len(rank_by_fit(profile, clusters)) == DEFAULT_ROLE_COUNT
+
+
+def test_a_smaller_k_keeps_the_closest_clusters_of_the_larger_one() -> None:
+    profile = [_axis(i, float(i)) for i in range(12)]
+    clusters = [[_axis(i)] * 3 for i in range(12)]
+    assert rank_by_fit(profile, clusters, limit=4) == [11, 10, 9, 8]
 
 
 def test_fewer_clusters_than_the_limit_are_all_kept() -> None:

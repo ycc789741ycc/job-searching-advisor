@@ -604,7 +604,8 @@ export interface paths {
         };
         /**
          * Cost Estimate
-         * @description Shown before the first role map, so nothing is spent unasked.
+         * @description Shown before a role map runs, so nothing is spent unasked. Pass
+         *     ``role_count`` to price a k before saving it; omit it for the saved k.
          */
         get: operations["cost_estimate_api_v1_roles_cost_estimate_get"];
         put?: never;
@@ -626,6 +627,28 @@ export interface paths {
         put?: never;
         /** Recluster */
         post: operations["recluster_api_v1_roles_recluster_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/roles/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_api_v1_roles_settings_get"];
+        /**
+         * Put Settings
+         * @description Saved only after the user confirmed the estimate for this k, so a change
+         *     queues a recluster through ``RoleCountChanged``.
+         */
+        put: operations["put_settings_api_v1_roles_settings_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -733,6 +756,14 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * RoleMapSettings
+         * @description How many roles the role map analyses on the user's key (ADR 0003).
+         */
+        RoleMapSettings: {
+            /** Role Count */
+            role_count: number;
         };
         /**
          * SessionResponse
@@ -2096,7 +2127,9 @@ export interface operations {
     };
     cost_estimate_api_v1_roles_cost_estimate_get: {
         parameters: {
-            query?: never;
+            query?: {
+                role_count?: number | null;
+            };
             header?: {
                 authorization?: string | null;
             };
@@ -2147,6 +2180,72 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_roles_settings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleMapSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_settings_api_v1_roles_settings_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleMapSettings"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleMapSettings"];
                 };
             };
             /** @description Validation Error */
