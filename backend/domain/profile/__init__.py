@@ -1,10 +1,10 @@
-from modules.profile.domain.evidence import (
+from domain.profile.evidence import (
     CitationError,
     Evidence,
     EvidenceSource,
     assert_citations_exist,
 )
-from modules.profile.domain.timeline import Position, total_experience_months
+from domain.profile.timeline import Position, total_experience_months
 
 __all__ = [
     "CitationError",

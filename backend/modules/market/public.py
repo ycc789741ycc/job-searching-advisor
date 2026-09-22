@@ -8,7 +8,7 @@ Two audiences with very different rights:
   schema, so a mistake here fails at the database rather than leaking.
 
 The domain value objects the crawler needs are re-exported here, because the
-crawler may not import ``modules.market.domain`` directly.
+crawler may not import ``domain.market`` directly.
 """
 
 from __future__ import annotations
@@ -21,11 +21,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
-from kernel.db import Database
-from kernel.db.base import utcnow
-from kernel.errors import NotFoundError, RateLimitedError, ValidationError
-from kernel.outbox import EventName, emit
-from modules.market.domain import (
+from domain.market import (
     Coverage,
     NormalizedPosting,
     PostingStatus,
@@ -37,6 +33,10 @@ from modules.market.domain import (
     canonical_key,
     normalize,
 )
+from kernel.db import Database
+from kernel.db.base import utcnow
+from kernel.errors import NotFoundError, RateLimitedError, ValidationError
+from kernel.outbox import EventName, emit
 from modules.market.infra.models import (
     Company,
     CompanySubscription,

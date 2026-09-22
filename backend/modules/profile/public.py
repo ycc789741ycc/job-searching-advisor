@@ -12,6 +12,15 @@ from datetime import date, datetime
 
 from sqlalchemy import select
 
+from domain.profile import (
+    CitationError,
+    EvidenceSource,
+    assert_citations_exist,
+    total_experience_months,
+)
+from domain.profile import (
+    Position as PositionValue,
+)
 from kernel.crypto import decrypt, encrypt
 from kernel.db import Database
 from kernel.db.base import utcnow
@@ -20,15 +29,6 @@ from kernel.fetch import GuardedClient
 from kernel.logging import get_logger
 from kernel.outbox import EventName, emit
 from kernel.storage import ObjectStore, object_key
-from modules.profile.domain import (
-    CitationError,
-    EvidenceSource,
-    assert_citations_exist,
-    total_experience_months,
-)
-from modules.profile.domain import (
-    Position as PositionValue,
-)
 from modules.profile.infra.connectors import Connector, EvidenceDraft
 from modules.profile.infra.models import (
     Evidence,

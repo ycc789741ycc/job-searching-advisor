@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from modules.assessment.domain import (
+from domain.assessment import (
     DimensionCountError,
     DimensionScore,
     LineageKind,

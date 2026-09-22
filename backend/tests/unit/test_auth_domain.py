@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from modules.identity.domain import (
+from domain.identity import (
     LOCKOUT_WINDOW,
     MAX_FAILED_ATTEMPTS,
     MIN_PASSWORD_LENGTH,
@@ -58,7 +58,7 @@ def test_the_first_guesses_are_refused(password: str) -> None:
 
 def test_every_obvious_password_is_long_enough_to_be_reachable() -> None:
     """A shorter entry would be dead code: length is checked first."""
-    from modules.identity.domain.password import _OBVIOUS
+    from domain.identity.password import _OBVIOUS
 
     too_short = [p for p in _OBVIOUS if len(p) < MIN_PASSWORD_LENGTH]
     assert not too_short, f"unreachable entries in the obvious-password list: {too_short}"

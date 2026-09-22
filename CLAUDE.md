@@ -120,17 +120,23 @@ backend/
   app/        composition root: FastAPI app, worker and crawler entrypoints, queue wiring
   kernel/     technical kernel, no domain: db, outbox, jobs, auth, crypto, storage,
               ai_gateway, fetch, embeddings
+  domain/     the domain model, one package per feature: identity · profile · market ·
+              rolemap · assessment. Pure rules, no I/O, no framework, no kernel.
   modules/    identity · profile · market · rolemap · assessment
                 public.py   the ONLY importable surface
                 api.py      FastAPI routers
-                domain/     pure rules, no I/O, no framework
                 infra/      repositories and adapters
                 jobs.py     worker handlers
   crawler/    its own deployable: hostile HTML, no secrets, no user data
 web/          React + Vite SPA
 ```
 
-Seven `import-linter` contracts in `backend/.importlinter` enforce those boundaries, and
+The domain model sits in one top-level `domain/` folder rather than inside each
+module, as the design guideline requires (its ADR 0002). `modules/<m>` uses only
+`domain/<m>`; another module's rules are reached through that module's
+`public.py`. Domain feature packages never import each other.
+
+Thirteen `import-linter` contracts in `backend/.importlinter` enforce those boundaries, and
 they run in CI. If one breaks, the design is wrong, not the contract.
 
 ## Things that are deliberate

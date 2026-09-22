@@ -6,7 +6,7 @@ import itertools
 
 import pytest
 
-from modules.rolemap.domain import (
+from domain.rolemap import (
     MAX_ROLES_ANALYZED,
     MIN_POSTINGS_FOR_A_ROLE,
     BarBasis,

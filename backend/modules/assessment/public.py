@@ -17,15 +17,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from kernel.ai_gateway import AiGateway
-from kernel.ai_gateway import load as load_template
-from kernel.db import Database
-from kernel.db.base import utcnow
-from kernel.errors import DimensionCountError as DimensionCountFailure
-from kernel.errors import EvidenceNotOwnedError, NotFoundError, ValidationError
-from kernel.logging import get_logger
-from kernel.outbox import EventName, emit
-from modules.assessment.domain import (
+from domain.assessment import (
     MAX_DIMENSIONS,
     MIN_DIMENSIONS,
     DimensionCountError,
@@ -38,9 +30,17 @@ from modules.assessment.domain import (
     evaluate,
     needs_follow_up,
 )
-from modules.assessment.domain import (
+from domain.assessment import (
     DimensionScore as DimensionValue,
 )
+from kernel.ai_gateway import AiGateway
+from kernel.ai_gateway import load as load_template
+from kernel.db import Database
+from kernel.db.base import utcnow
+from kernel.errors import DimensionCountError as DimensionCountFailure
+from kernel.errors import EvidenceNotOwnedError, NotFoundError, ValidationError
+from kernel.logging import get_logger
+from kernel.outbox import EventName, emit
 from modules.assessment.infra.models import (
     DimensionLineage,
     DimensionScore,

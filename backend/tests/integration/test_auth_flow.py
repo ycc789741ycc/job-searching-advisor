@@ -9,10 +9,10 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 
+from domain.identity import MAX_FAILED_ATTEMPTS
 from kernel.auth import ALGORITHM, StaticSecretResolver, TokenVerifier
 from kernel.db import Database
 from kernel.errors import ConflictError, RateLimitedError, UnauthenticatedError, ValidationError
-from modules.identity.domain import MAX_FAILED_ATTEMPTS
 from modules.identity.public import AuthService
 
 pytestmark = pytest.mark.integration

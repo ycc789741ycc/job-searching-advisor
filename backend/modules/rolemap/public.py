@@ -15,6 +15,15 @@ from typing import Any
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from domain.rolemap import (
+    MIN_POSTINGS_FOR_A_ROLE,
+    BarBasis,
+    RoleChange,
+    blend,
+    max_role_count,
+    rank_by_fit,
+    reconcile,
+)
 from kernel.ai_gateway import AiGateway
 from kernel.ai_gateway import load as load_template
 from kernel.db import Database
@@ -24,15 +33,6 @@ from kernel.logging import get_logger
 from kernel.outbox import EventName, emit
 from modules.market.public import MarketService, PostingView, Visibility, band_from
 from modules.profile.public import ProfileService
-from modules.rolemap.domain import (
-    MIN_POSTINGS_FOR_A_ROLE,
-    BarBasis,
-    RoleChange,
-    blend,
-    max_role_count,
-    rank_by_fit,
-    reconcile,
-)
 from modules.rolemap.infra.models import Role, RoleLineage, RoleMember, RoleRequirement
 
 __all__ = ["RequirementView", "RoleMapService", "RoleView"]

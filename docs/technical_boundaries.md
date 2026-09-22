@@ -67,11 +67,12 @@ backend/
   app/                      # composition root: FastAPI app, worker + crawler entrypoints, wiring
   kernel/                   # shared technical kernel, no domain logic
     db/ outbox/ jobs/ auth/ crypto/ storage/ ai_gateway/ fetch/ embeddings/
+  domain/                   # the domain model: entities and rules; pure Python, no I/O
+    identity/  profile/  market/  rolemap/  assessment/  gapplan/  resume/
   modules/
     identity/  profile/  market/  rolemap/  assessment/  gapplan/  resume/
       public.py             # the ONLY importable surface: service interface, DTOs, event types
       api.py                # FastAPI routers
-      domain/               # entities and rules; pure Python, no I/O
       infra/                # repositories, external adapters
       jobs.py               # queued task handlers
   crawler/                  # separate deployable; uses kernel.db/fetch/embeddings + modules.market.public
@@ -80,15 +81,19 @@ web/                        # TS client
 
 > The shared package is named `kernel`, not `platform`, because `platform` would shadow Python's standard-library module.
 >
+> The domain model is one top-level `domain/` folder with a package per feature, not a `domain/` inside each module. That is the design guideline's rule (its ADR 0002): the layer boundary is visible, and can be checked, against one path. The cost it names applies here too: one feature now spans `domain/<m>/` and `modules/<m>/`. Before 2026-09-22 each module had its own `domain/`, so ADRs 0002 and 0003 still cite `modules/rolemap/domain/selection.py`, which is now `domain/rolemap/selection.py`.
+>
 > `gapplan` and `resume` are Phase 2/3 and not built yet. `gapplan` replaces the earlier `growth`: with no CareerGoal (domain decision 16), the module is about plans for a Target and nothing else.
 
 ### Rules (enforced in CI with `import-linter` contracts)
 1. A module imports another module **only** through its `public.py`.
-2. `domain/` imports nothing from `infra/`, `kernel/` or FastAPI.
+2. `domain/` imports no application code (`app`, `modules`, `crawler`), nothing from `kernel/`, and no framework, ORM or HTTP library.
 3. `crawler/` may import only `kernel.db`, `kernel.fetch`, `kernel.embeddings`, `kernel.outbox` and `modules.market.public`.
 4. Only `kernel.ai_gateway` and `modules.profile.infra.connectors` may import `kernel.crypto`'s decrypt functions.
 5. `modules.*` never call an LLM SDK directly; they go through `kernel.ai_gateway`.
 6. `modules.profile` never imports `kernel.ai_gateway`, directly or indirectly. Ingestion is deterministic (domain decision 18), so a sync can never spend the user's key and the most hostile input never reaches a prompt from there.
+7. Domain feature packages (`domain.identity`, `domain.market`, …) are independent: none imports another. A concept two features need gets its own feature package.
+8. `modules.<m>` imports only `domain.<m>`. Another module's rules are reached through that module's `public.py` (rule 1).
 
 ### Communication
 - **Queries** are synchronous in-process calls through `public.py`. For example, `resume` asks `assessment` for the current RoleFit.
