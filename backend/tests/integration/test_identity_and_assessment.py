@@ -60,6 +60,13 @@ def stub_provider(monkeypatch: pytest.MonkeyPatch) -> StubProvider:
     return provider
 
 
+async def _own_market_only(market, account: uuid.UUID) -> None:
+    """Choosing a market keeps the platform's baseline postings out of scope, so
+    a test sees only the postings it pasted, whatever the crawler has stored in
+    this database (domain decision 15)."""
+    await market.add_market(account, f"Test market {uuid.uuid4().hex[:8]}")
+
+
 @pytest.fixture
 def identity(database: Database) -> IdentityService:
     return IdentityService(database, default_monthly_cap_usd=Decimal("20"))
@@ -321,6 +328,7 @@ async def test_the_role_map_estimate_runs_no_local_ml(
         account, provider="anthropic", model="claude-opus-5", api_key="sk-test", base_url=None
     )
     market = MarketService(database, manual_refresh_per_day=3)
+    await _own_market_only(market, account)
     for i in range(7):
         await market.paste_job_description(
             account,
@@ -383,6 +391,7 @@ async def test_a_role_map_analyses_only_the_ten_clusters_closest_to_the_profile(
         account, provider="anthropic", model="claude-opus-5", api_key="sk-test", base_url=None
     )
     market = MarketService(database, manual_refresh_per_day=3)
+    await _own_market_only(market, account)
     for group in range(12):
         for copy in range(3):
             await market.paste_job_description(
@@ -466,6 +475,7 @@ async def test_k_has_a_default_is_stored_per_user_and_changes_the_ceiling(
         account, provider="anthropic", model="claude-opus-5", api_key="sk-test", base_url=None
     )
     market = MarketService(database, manual_refresh_per_day=3)
+    await _own_market_only(market, account)
     for i in range(60):
         await market.paste_job_description(
             account,

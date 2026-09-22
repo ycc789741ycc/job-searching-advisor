@@ -28,6 +28,7 @@ from domain.market import (
     SalaryBand,
     SalaryRange,
     SourceKind,
+    SourceOrigin,
     Visibility,
     band_from,
     canonical_key,
@@ -37,6 +38,7 @@ from kernel.db import Database
 from kernel.db.base import utcnow
 from kernel.errors import NotFoundError, RateLimitedError, ValidationError
 from kernel.outbox import EventName, emit
+from modules.market.baseline import BASELINE_SOURCES, BaselineSource
 from modules.market.infra.models import (
     Company,
     CompanySubscription,
@@ -49,6 +51,8 @@ from modules.market.infra.models import (
 )
 
 __all__ = [
+    "BASELINE_SOURCES",
+    "BaselineSource",
     "CompanySubscriptionView",
     "Coverage",
     "CrawlIngest",
@@ -60,6 +64,7 @@ __all__ = [
     "SalaryBand",
     "SalaryRange",
     "SourceKind",
+    "SourceOrigin",
     "Visibility",
     "band_from",
     "canonical_key",
@@ -399,32 +404,41 @@ class MarketService:
         """Every posting this user's role map is built from.
 
         Shared postings in their markets or from a company they watch, plus
-        their own pasted JDs. Another user's private postings can never appear
-        here — they are in a schema this query does not touch.
+        their own pasted JDs. A user who has chosen no market also gets the
+        platform's baseline postings (domain decision 15), so a first role map
+        has something to group. Another user's private postings can never
+        appear here — they are in a schema this query does not touch.
         """
         markets = await self.markets(owner_id)
         subscriptions = await self.subscriptions(owner_id)
         company_ids = [s.company_id for s in subscriptions]
 
-        shared_rows: list[PostingView] = []
-        if markets or company_ids:
-            async with self._db.shared() as session:
-                query = (
-                    select(JobPosting, Company.name)
-                    .join(Company, JobPosting.company_id == Company.id)
-                    .where(JobPosting.status == str(PostingStatus.OPEN))
+        async with self._db.shared() as session:
+            query = (
+                select(JobPosting, Company.name)
+                .join(Company, JobPosting.company_id == Company.id)
+                .where(JobPosting.status == str(PostingStatus.OPEN))
+            )
+            conditions: list[ColumnElement[bool]] = []
+            if company_ids:
+                conditions.append(JobPosting.company_id.in_(company_ids))
+            if markets:
+                conditions.append(JobPosting.location.in_(markets))
+            else:
+                # With markets chosen, baseline postings in them are already
+                # in scope through the location match above.
+                conditions.append(
+                    JobPosting.crawl_source_id.in_(
+                        select(CrawlSource.id).where(
+                            CrawlSource.origin == str(SourceOrigin.BASELINE)
+                        )
+                    )
                 )
-                conditions: list[ColumnElement[bool]] = []
-                if company_ids:
-                    conditions.append(JobPosting.company_id.in_(company_ids))
-                if markets:
-                    conditions.append(JobPosting.location.in_(markets))
-                query = query.where(_any_of(conditions))
-                rows = await session.execute(query)
-                shared_rows = [
-                    _shared_posting_view(posting, company_name)
-                    for posting, company_name in rows.all()
-                ]
+            query = query.where(_any_of(conditions))
+            rows = await session.execute(query)
+            shared_rows = [
+                _shared_posting_view(posting, company_name) for posting, company_name in rows.all()
+            ]
 
         return shared_rows + await self.private_postings(owner_id)
 
@@ -481,6 +495,50 @@ class MarketService:
                 posting = await session.get(PrivateJobPosting, posting_id)
                 if posting is not None and posting.owner_id == owner_id:
                     posting.vector = vector
+
+    async def seed_baseline(
+        self, sources: tuple[BaselineSource, ...] = BASELINE_SOURCES
+    ) -> tuple[int, int]:
+        """Make ``market.crawl_source`` match the baseline list. Idempotent.
+
+        Returns (active, retired). An entry no longer listed is retired, never
+        deleted: the postings it found keep a source that can expire them.
+        A demand source with the same endpoint becomes a baseline one; it is
+        the same board either way.
+        """
+        wanted = {(s.kind, s.endpoint) for s in sources}
+        async with self._db.shared() as session:
+            for source in sources:
+                company = await _ensure_company(session, source.company_name)
+                existing = await session.execute(
+                    select(CrawlSource).where(
+                        CrawlSource.kind == source.kind, CrawlSource.endpoint == source.endpoint
+                    )
+                )
+                row = existing.scalar_one_or_none()
+                if row is None:
+                    session.add(
+                        CrawlSource(
+                            kind=source.kind,
+                            company_id=company.id,
+                            endpoint=source.endpoint,
+                            origin=str(SourceOrigin.BASELINE),
+                        )
+                    )
+                else:
+                    row.origin = str(SourceOrigin.BASELINE)
+                    row.status = "active"
+                    row.company_id = row.company_id or company.id
+
+            listed = await session.execute(
+                select(CrawlSource).where(CrawlSource.origin == str(SourceOrigin.BASELINE))
+            )
+            retired = 0
+            for row in listed.scalars():
+                if (row.kind, row.endpoint) not in wanted and row.status != "retired":
+                    row.status = "retired"
+                    retired += 1
+        return len(sources), retired
 
     async def request_manual_refresh(self, owner_id: uuid.UUID, company_id: uuid.UUID) -> None:
         """Re-crawl one watched company now, within a per-day cap.

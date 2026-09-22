@@ -65,6 +65,9 @@ class CrawlSource(Base, TimestampMixin):
     market: Mapped[str | None] = mapped_column(String(128), nullable=True)
     endpoint: Mapped[str] = mapped_column(String(1024), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="active")
+    # Why this is crawled: `baseline` (the platform's list) or `demand` (a
+    # subscription or market asked for it). Never *who* asked.
+    origin: Mapped[str] = mapped_column(String(16), nullable=False, server_default="demand")
     last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 

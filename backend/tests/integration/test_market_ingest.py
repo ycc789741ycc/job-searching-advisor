@@ -382,3 +382,124 @@ async def test_the_weekly_recheck_sees_every_users_subscriptions(
             text("DELETE FROM market.crawl_source WHERE endpoint = :endpoint"),
             {"endpoint": endpoint},
         )
+
+
+# -- the baseline crawl (domain decision 15) --------------------------------
+
+
+async def test_seeding_the_baseline_is_idempotent_and_retires_what_was_dropped(
+    database: Database, crawler_database: Database
+) -> None:
+    from modules.market.public import BASELINE_SOURCES, BaselineSource
+
+    extra = BaselineSource(
+        "greenhouse",
+        f"Baseline Test {uuid.uuid4().hex[:8]}",
+        f"https://boards-api.greenhouse.io/v1/boards/{uuid.uuid4().hex}/jobs?content=true",
+    )
+    market = MarketService(database, manual_refresh_per_day=3)
+
+    async def rows_for(endpoint: str) -> list[tuple[str, str]]:
+        async with database.shared() as session:
+            found = await session.execute(
+                text("SELECT origin, status FROM market.crawl_source WHERE endpoint = :e"),
+                {"e": endpoint},
+            )
+            return [tuple(row) for row in found.all()]
+
+    try:
+        await market.seed_baseline((*BASELINE_SOURCES, extra))
+        await market.seed_baseline((*BASELINE_SOURCES, extra))
+        assert await rows_for(extra.endpoint) == [("baseline", "active")]
+
+        # Dropped from the list: retired, not deleted.
+        _active, retired = await market.seed_baseline(BASELINE_SOURCES)
+        assert retired == 1
+        assert await rows_for(extra.endpoint) == [("baseline", "retired")]
+        for source in BASELINE_SOURCES:
+            assert await rows_for(source.endpoint) == [("baseline", "active")]
+    finally:
+        async with crawler_database.shared() as session:
+            await session.execute(
+                text("DELETE FROM market.crawl_source WHERE endpoint = :e"),
+                {"e": extra.endpoint},
+            )
+
+
+async def test_a_user_with_no_market_sees_baseline_postings_and_one_with_a_market_does_not(
+    database: Database,
+    crawler_database: Database,
+    account: uuid.UUID,
+    other_account: uuid.UUID,
+) -> None:
+    company = f"Baseline Co {uuid.uuid4().hex[:8]}"
+    async with crawler_database.shared() as session:
+        row = CrawlSource(
+            kind="greenhouse",
+            endpoint=f"https://boards.test/{uuid.uuid4()}",
+            origin="baseline",
+        )
+        session.add(row)
+        await session.flush()
+        source_id = row.id
+    try:
+        await CrawlIngest(crawler_database).record_crawl(
+            source_id, [posting("Baseline Engineer", company=company, location="Lisbon")]
+        )
+        market = MarketService(database, manual_refresh_per_day=3)
+        await market.add_market(other_account, f"Elsewhere {uuid.uuid4().hex[:8]}")
+
+        mine = await market.postings_in_scope(account)
+        theirs = await market.postings_in_scope(other_account)
+
+        assert any(p.company_name == company for p in mine)
+        assert all(p.company_name != company for p in theirs)
+    finally:
+        async with crawler_database.shared() as session:
+            await session.execute(
+                text("DELETE FROM market.job_posting WHERE crawl_source_id = :id"),
+                {"id": source_id},
+            )
+            await session.execute(
+                text("DELETE FROM market.crawl_source WHERE id = :id"), {"id": source_id}
+            )
+
+
+async def test_materialising_leaves_a_baseline_source_alone(
+    database: Database,
+    account: uuid.UUID,
+    settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A watched company already on the baseline list gets no second source."""
+    from types import SimpleNamespace
+
+    import crawler.discovery
+    from modules.market import jobs
+    from modules.market.public import BASELINE_SOURCES
+
+    baseline = BASELINE_SOURCES[0]
+    market = MarketService(database, manual_refresh_per_day=3)
+    await market.seed_baseline()
+    await market.subscribe(account, company_name=baseline.company_name, role_title="Engineer")
+
+    probed: list[str] = []
+
+    async def record_probe(client, company_name, **_):
+        probed.append(company_name)
+        return None
+
+    monkeypatch.setattr(crawler.discovery, "discover_board", record_probe)
+    await jobs.materialize_crawl_sources(SimpleNamespace(settings=settings, database=database))
+
+    assert baseline.company_name not in probed
+    async with database.shared() as session:
+        found = await session.execute(
+            text(
+                "SELECT origin, count(*) FROM market.crawl_source cs "
+                "JOIN market.company c ON c.id = cs.company_id "
+                "WHERE c.name = :name GROUP BY origin"
+            ),
+            {"name": baseline.company_name},
+        )
+        assert {origin: count for origin, count in found.all()} == {"baseline": 1}
