@@ -266,9 +266,10 @@ async def test_an_assessment_citing_evidence_the_user_lacks_is_rejected(
     )
 
     gateway = AiGateway(settings=settings, credentials=identity, budget=identity)
+    market = MarketService(database, manual_refresh_per_day=3)
     rolemap = RoleMapService(
         database,
-        market=MarketService(database, manual_refresh_per_day=3),
+        market=market,
         profile=profile,
         gateway=gateway,
         embedding_model=settings.embedding_model_name,
@@ -277,6 +278,7 @@ async def test_an_assessment_citing_evidence_the_user_lacks_is_rejected(
         database,
         profile=profile,
         rolemap=rolemap,
+        market=market,
         gateway=gateway,
         confidence_threshold=settings.assessment_confidence_threshold,
     )

@@ -18,9 +18,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from domain.assessment import (
+    DEFAULT_MATCHES,
     MAX_DIMENSIONS,
     MIN_DIMENSIONS,
     DimensionCountError,
+    MatchCandidate,
     TargetScore,
     UncoveredRequirement,
     assert_ids_unique,
@@ -29,6 +31,7 @@ from domain.assessment import (
     dropped_ids,
     evaluate,
     needs_follow_up,
+    rank_matches,
 )
 from domain.assessment import (
     DimensionScore as DimensionValue,
@@ -49,6 +52,7 @@ from modules.assessment.infra.models import (
     SkillAssessment,
     SkillDimension,
 )
+from modules.market.public import MarketService, SalaryRange, Visibility
 from modules.profile.public import CitationError, ProfileService, assert_citations_exist
 from modules.rolemap.public import RoleMapService, RoleView
 
@@ -57,6 +61,7 @@ __all__ = [
     "AssessmentView",
     "DimensionView",
     "FitView",
+    "MatchedPostingView",
     "QuestionView",
 ]
 
@@ -153,6 +158,22 @@ class FitView:
     created_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class MatchedPostingView:
+    """One opening inside one of the user's roles, ranked by that role's fit."""
+
+    posting_id: uuid.UUID
+    role_id: uuid.UUID
+    role_name: str
+    title: str
+    company_name: str
+    location: str | None
+    url: str | None
+    salary: SalaryRange | None
+    fit: int | None
+    subscription_id: uuid.UUID | None
+
+
 class AssessmentService:
     def __init__(
         self,
@@ -160,12 +181,14 @@ class AssessmentService:
         *,
         profile: ProfileService,
         rolemap: RoleMapService,
+        market: MarketService,
         gateway: AiGateway,
         confidence_threshold: float,
     ) -> None:
         self._db = database
         self._profile = profile
         self._rolemap = rolemap
+        self._market = market
         self._gateway = gateway
         self._threshold = confidence_threshold
 
@@ -446,6 +469,69 @@ class AssessmentService:
                     )
                 )
             return latest
+
+    async def matched_postings(
+        self, owner_id: uuid.UUID, *, limit: int = DEFAULT_MATCHES
+    ) -> list[MatchedPostingView]:
+        """The best openings inside the user's analysed roles.
+
+        Ranked by the role's current fit; no AI runs here. Pasted JDs are left
+        out — they are the user's own, shown as "My own JD", not as a match —
+        and each row says whether the user already watches that role there.
+        """
+        fit_by_role = {f.role_id: f.score for f in await self.fits(owner_id) if f.role_id}
+        subscriptions = await self._market.subscriptions(owner_id)
+
+        by_posting: dict[str, tuple[RoleView, Any]] = {}
+        candidates: list[MatchCandidate] = []
+        for role, postings in await self._rolemap.role_postings(owner_id):
+            for posting in postings:
+                if posting.visibility is not Visibility.SHARED:
+                    continue
+                by_posting[str(posting.id)] = (role, posting)
+                candidates.append(
+                    MatchCandidate(
+                        posting_id=str(posting.id),
+                        role_id=str(role.id),
+                        role_name=role.name,
+                        company_name=posting.company_name,
+                        title=posting.title,
+                        fit=fit_by_role.get(role.id),
+                    )
+                )
+
+        try:
+            ranked = rank_matches(candidates, limit=limit)
+        except ValueError as exc:
+            raise ValidationError(str(exc), limit=limit) from exc
+
+        matched: list[MatchedPostingView] = []
+        for candidate in ranked:
+            role, posting = by_posting[candidate.posting_id]
+            watching = next(
+                (
+                    s.id
+                    for s in subscriptions
+                    if s.company_id == posting.company_id
+                    and (s.role_id == role.id or s.role_title.casefold() == role.name.casefold())
+                ),
+                None,
+            )
+            matched.append(
+                MatchedPostingView(
+                    posting_id=posting.id,
+                    role_id=role.id,
+                    role_name=role.name,
+                    title=posting.title,
+                    company_name=posting.company_name,
+                    location=posting.location,
+                    url=posting.url,
+                    salary=posting.salary,
+                    fit=candidate.fit,
+                    subscription_id=watching,
+                )
+            )
+        return matched
 
     # -- internals ----------------------------------------------------------
 

@@ -18,15 +18,26 @@ from domain.assessment.fit import (
     UncoveredRequirement,
     evaluate,
 )
+from domain.assessment.matches import (
+    DEFAULT_MATCHES,
+    MAX_MATCHES,
+    MIN_MATCHES,
+    MatchCandidate,
+    rank_matches,
+)
 
 __all__ = [
+    "DEFAULT_MATCHES",
     "MAX_DIMENSIONS",
+    "MAX_MATCHES",
     "MIN_DIMENSIONS",
+    "MIN_MATCHES",
     "DimensionCountError",
     "DimensionScore",
     "FitResult",
     "LineageEntry",
     "LineageKind",
+    "MatchCandidate",
     "SkillGap",
     "TargetScore",
     "UncoveredRequirement",
@@ -36,4 +47,5 @@ __all__ = [
     "dropped_ids",
     "evaluate",
     "needs_follow_up",
+    "rank_matches",
 ]

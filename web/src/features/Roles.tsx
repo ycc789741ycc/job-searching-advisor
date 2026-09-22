@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type {
   CostEstimate,
   Fit,
+  MatchedPosting,
   Role,
   RoleMapSettings,
   SalaryBand,
@@ -36,6 +37,10 @@ export function Roles() {
     [],
   );
   const markets = useAsync<string[]>(() => api.get("/market-preferences"), []);
+  const matched = useAsync<MatchedPosting[]>(
+    () => api.get("/matched-postings?limit=10"),
+    [],
+  );
 
   const [company, setCompany] = useState("");
   const [watchRole, setWatchRole] = useState("");
@@ -370,6 +375,87 @@ export function Roles() {
             selectedId={selected}
             onSelect={setSelected}
           />
+        </div>
+      )}
+
+      {(matched.data ?? []).length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h2 style={{ marginTop: 0 }}>Top matched openings</h2>
+          <p className="muted" style={{ fontSize: 13 }}>
+            Open postings inside your roles, ranked by how well you fit the
+            role. A posting&apos;s own requirements do not change its rank yet.
+          </p>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Fit</th>
+                <th>Role · company</th>
+                <th>Opening</th>
+                <th>Pay</th>
+                <th aria-label="Watch" />
+              </tr>
+            </thead>
+            <tbody>
+              {(matched.data ?? []).map((match) => (
+                <tr key={match.posting_id}>
+                  <td>{match.fit === null ? "—" : `${match.fit}%`}</td>
+                  <td>
+                    {match.role_name} · {match.company_name}
+                  </td>
+                  <td>
+                    {match.url ? (
+                      <a href={match.url} rel="noreferrer" target="_blank">
+                        {match.title}
+                      </a>
+                    ) : (
+                      match.title
+                    )}
+                    {match.location && (
+                      <span className="muted"> · {match.location}</span>
+                    )}
+                  </td>
+                  <td>
+                    {match.salary
+                      ? `${match.salary.currency} ${Math.round(match.salary.min / 1000)}k–${Math.round(match.salary.max / 1000)}k`
+                      : "—"}
+                  </td>
+                  <td>
+                    <Button
+                      variant="secondary"
+                      busy={busy}
+                      onClick={() =>
+                        act(
+                          match.subscription_id
+                            ? "removed from your watchlist"
+                            : "added to your watchlist",
+                          async () => {
+                            if (match.subscription_id) {
+                              await api.del(
+                                `/role-subscriptions/${match.subscription_id}`,
+                              );
+                            } else {
+                              await api.post("/role-subscriptions", {
+                                company_name: match.company_name,
+                                role_title: match.role_name,
+                                role_id: match.role_id,
+                                url: match.url,
+                              });
+                            }
+                            await Promise.all([
+                              subscriptions.reload(),
+                              matched.reload(),
+                            ]);
+                          },
+                        )
+                      }
+                    >
+                      {match.subscription_id ? "Watching" : "Watch"}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
