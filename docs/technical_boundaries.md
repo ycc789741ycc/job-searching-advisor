@@ -39,8 +39,8 @@ flowchart LR
 |---|---|---|---|
 | `web` | SPA for the prototype's screens; no business rules, no AI calls | No | API, auth provider |
 | `api` | HTTP + SSE, routers for every module, résumé chat streaming | **AI key only** (for chat streaming) | User's LLM provider |
-| `worker` | Queued and scheduled jobs: `ai` (assessment, cluster naming, fit, plans, difficulty estimates), `sync` (connectors, résumé parsing), `docs` (PDF export), `notify` (weekly digest, interview prompts) | AI key (`ai` queue), connector OAuth tokens (`sync` queue) | LLM provider, GitHub/Jira/LinkedIn, personal sites, email |
-| `crawler` | Weekly crawl and rate-limited single-company refresh: parse, normalize, dedup, embed and expire postings | **None** | Public job boards and job APIs only |
+| `worker` | Queued and scheduled jobs: `ai` (assessment, per-user role map over the user's top k, fit, gap plans per Target, difficulty estimates), `sync` (connectors, résumé parsing — **no AI**, domain decision 18), `docs` (PDF export), `notify` (weekly digest, interview prompts) | AI key (`ai` queue), connector OAuth tokens (`sync` queue) | LLM provider, GitHub/Jira/LinkedIn, personal sites, email |
+| `crawler` | Weekly crawl of baseline and demand sources, and rate-limited single-company refresh: parse, normalize, dedup, embed and expire postings | **None** | Public job boards, job APIs, and subscription URLs (SSRF-guarded) |
 
 **Why the crawler is its own unit:**
 - It has a different trust level: it parses hostile HTML from the internet.
@@ -68,7 +68,7 @@ backend/
   kernel/                   # shared technical kernel, no domain logic
     db/ outbox/ jobs/ auth/ crypto/ storage/ ai_gateway/ fetch/ embeddings/
   modules/
-    identity/  profile/  market/  rolemap/  assessment/  growth/  resume/
+    identity/  profile/  market/  rolemap/  assessment/  gapplan/  resume/
       public.py             # the ONLY importable surface: service interface, DTOs, event types
       api.py                # FastAPI routers
       domain/               # entities and rules; pure Python, no I/O
@@ -79,6 +79,8 @@ web/                        # TS client
 ```
 
 > The shared package is named `kernel`, not `platform`, because `platform` would shadow Python's standard-library module.
+>
+> `gapplan` and `resume` are Phase 2/3 and not built yet. `gapplan` replaces the earlier `growth`: with no CareerGoal (domain decision 16), the module is about plans for a Target and nothing else.
 
 ### Rules (enforced in CI with `import-linter` contracts)
 1. A module imports another module **only** through its `public.py`.
@@ -86,6 +88,7 @@ web/                        # TS client
 3. `crawler/` may import only `kernel.db`, `kernel.fetch`, `kernel.embeddings`, `kernel.outbox` and `modules.market.public`.
 4. Only `kernel.ai_gateway` and `modules.profile.infra.connectors` may import `kernel.crypto`'s decrypt functions.
 5. `modules.*` never call an LLM SDK directly; they go through `kernel.ai_gateway`.
+6. **Proposed:** `modules.profile` never imports `kernel.ai_gateway`. Ingestion is deterministic (domain decision 18), so a sync can never spend the user's key and the most hostile input never reaches a prompt from there. Add it as a seventh `import-linter` contract.
 
 ### Communication
 - **Queries** are synchronous in-process calls through `public.py`. For example, `resume` asks `assessment` for the current RoleFit.
@@ -95,8 +98,10 @@ web/                        # TS client
 |---|---|---|
 | `ProfileUpdated` | profile | assessment.run |
 | `AssessmentCompleted` / `DimensionsChanged` | assessment | assessment.compute_fits |
-| `PostingsChanged(markets, companies)` | crawler (via market) | dispatcher resolves affected users → rolemap.recluster per user |
-| `RoleRequirementsChanged`, `RoleSplitOrMerged` | rolemap | assessment.compute_fits, growth.suggest_successor |
+| `PostingsChanged(markets, companies)` | crawler (via market) | dispatcher resolves affected users → rolemap.recluster per user. A baseline-only change reaches every user whose scope includes that market. |
+| `RoleCountChanged(k)` | rolemap | rolemap.recluster for that user, after the cost estimate is confirmed |
+| `SubscriptionAdded(company, url)` | market | worker materialises a `market.crawl_source` from the URL with no user id → single-company crawl |
+| `RoleRequirementsChanged`, `RoleSplitOrMerged` | rolemap | assessment.compute_fits, gapplan.suggest_successor (for Targets whose snapshot came from that Role) |
 | `InterviewReported` | profile | market.record_contribution, profile.add_evidence, assessment.calibrate_fit |
 | `ProviderCredentialFailed`, `UsageBudgetExceeded` | kernel.ai_gateway | identity.pause_background_jobs, notify |
 
@@ -112,7 +117,7 @@ web/                        # TS client
 | Market (shared data) | `market` | `market` (shared) and `market_user` (owner zone; see §3) |
 | Role map (per user) | `rolemap` | `rolemap` |
 | Assessment | `assessment` | `assessment` |
-| Growth | `growth` | `growth` |
+| Gap plan | `gapplan` | `gapplan` |
 | Resume | `resume` | `resume` |
 
 ## 3. Data boundaries
@@ -123,17 +128,20 @@ web/                        # TS client
 | Role | Used by | Access |
 |---|---|---|
 | `app_rw` | api, worker | All module schemas. `market`: read-only, except inserts into `market.interview_contribution` and writes to `market.crawl_source` (materialized from subscriptions) |
-| `crawler_rw` | crawler | `market.crawl_source` (read/update status), `market.job_posting`, `market.company`, `market.posting_embedding`; insert into `outbox`. **No access to any user schema.** |
+| `crawler_rw` | crawler | `market.crawl_source` (read/update status; baseline rows are loaded by `migrate`, not the crawler), `market.job_posting`, `market.company`, `market.posting_embedding`; insert into `outbox`. **No access to any user schema.** |
 | `aggregator` | worker, aggregation job only | Read `market.interview_contribution`, write `market.interview_difficulty_agg` |
 | `migrator` | Alembic in CI/CD | DDL |
 
 ### Shared zone vs. owner zone: privacy by storage location, not by a flag
 - **Shared zone** (no `owner_id`, no RLS): `market.company`, `market.job_posting`, `market.crawl_source`, `market.posting_embedding`, `market.interview_contribution`, `market.interview_difficulty_agg`.
-- **Owner zone:** every table has `owner_id` and **Postgres row-level security** keyed on a per-transaction `app.user_id` setting. The API sets it from the JWT; a worker sets it from the job's user. Covers `identity.provider_credential`, `identity.ai_usage_*`, and all of `profile.*`, `market_user.*`, `rolemap.*`, `assessment.*`, `growth.*` and `resume.*`.
+- **Owner zone:** every table has `owner_id` and **Postgres row-level security** keyed on a per-transaction `app.user_id` setting. The API sets it from the JWT; a worker sets it from the job's user. Covers `identity.provider_credential`, `identity.ai_usage_*`, and all of `profile.*`, `market_user.*`, `rolemap.*`, `assessment.*`, `gapplan.*` and `resume.*`.
 
 | Domain data | Stored in | Why |
 |---|---|---|
-| CompanySubscription, MarketPreference | `market_user` | User-owned. The worker copies the needed companies and markets into `market.crawl_source` **without user ids**, so the crawler can't tell who asked for them. |
+| RoleSubscription, MarketPreference | `market_user.company_subscription`, `market_user.market_preference` | User-owned. The subscription table keeps its name and gains `role_title`, a nullable `role_id` and a nullable `url` (domain decision 19); renaming it would mean rewriting the fan-out RLS policy for no gain. The worker copies the needed companies, URLs and markets into `market.crawl_source` **without user ids**, so the crawler can't tell who asked for them. |
+| Baseline sources (domain decision 15) | `market.crawl_source` with `origin = 'baseline'` | A versioned seed owned by `modules.market`, loaded by `make migrate`. It is data reviewed like code, not environment configuration. Demand rows have `origin = 'demand'`. Neither carries a user id. |
+| Role count k (domain decision 17) | `rolemap.role_map_setting` | Owner zone, one row per user; the bound is enforced in the `rolemap` domain rule and the API schema (ADR 0003). |
+| GapPlan, Milestone, Task | `gapplan.*` | Owner zone. A plan row holds the Target as `target_kind` plus one of `job_posting_id`, `subscription_id` or `private_posting_id`, and the frozen requirements snapshot, so a plan survives posting expiry and re-clustering. |
 | Pasted JDs (decision 12) | `market_user.private_job_posting` | The crawler role and shared queries physically can't reach them. An optional `shared_posting_id` gives a one-way link to a matching crawled posting. |
 | InterviewReport, private part (outcome, stage notes) | `profile.interview_outcome` | Owner only; becomes Evidence and calibrates fit |
 | InterviewReport, shared part (company, title, stages, difficulty) | `market.interview_contribution` with salted `contributor_hash` | Allows one vote per user with no link back to the account |
@@ -168,7 +176,7 @@ Crawled pages, uploaded PDF/DOCX files, pasted JDs, repository and ticket conten
   - Evidence ids cited by the AI must exist in *this user's* profile, or the output is rejected. This also blocks invented résumé claims.
 - **SSRF protection** (`kernel.fetch`):
   - Block private, loopback, link-local and cloud-metadata addresses, and re-check after every redirect and DNS resolution.
-  - Applies to personal-site crawling and to the **user-supplied LLM base URL**. A "Local" model therefore means an endpoint at a public URL the user controls, not one on the server's network.
+  - Applies to personal-site crawling, to **subscription URLs** (fetched only by the crawler, from a `crawl_source` row with no owner), and to the **user-supplied LLM base URL**. A "Local" model therefore means an endpoint at a public URL the user controls, not one on the server's network.
 - **Auth:** the API verifies JWT signature, issuer, audience and expiry on every request. Login OAuth (Google, via the auth provider) and connector OAuth (handled by `profile`) are separate flows with separate token storage.
 
 ## 5. AI gateway (`kernel/ai_gateway`)
@@ -193,21 +201,27 @@ flowchart LR
 ```
 
 - **Prompt templates** are versioned files. Each snapshot (SkillAssessment, RoleFit, GapPlan, ResumeVersion) stores the model id and template version.
-- **First-run cost confirmation** comes from the same estimate step, run in dry-run mode.
+- **First-run cost confirmation** comes from the same estimate step, run in dry-run mode. The role-map estimate is capped at the user's k, and raising k asks for confirmation again (ADR 0003).
+- **Callers:** `assessment` (analysis, follow-up questions, fit), `rolemap` (naming, requirements, difficulty), and later `gapplan` and `resume`. Never `profile`: ingestion is outside the gateway (rule 6).
 - **Local ML is outside the gateway.** sentence-transformers and HDBSCAN run in `crawler` (posting embeddings, dedup) and in `worker` (per-user clustering over the embeddings of that user's market postings). The gateway on the user's key only **names clusters and extracts requirements**. Rule: *generative AI is paid by the user; plain computation is paid by the platform* (domain decision 7).
 
 ## 6. Schedules and flows across units
 
 | Trigger | Unit | Flow |
 |---|---|---|
-| Weekly cron | crawler | crawl `crawl_source` → normalize → dedup → embed → expire unseen → outbox `PostingsChanged` |
-| `PostingsChanged` | worker (`ai`) | resolve affected users → recluster → name clusters and extract requirements → compute fits |
+| Weekly cron | crawler | crawl every `crawl_source`, baseline and demand → normalize → dedup → embed → expire unseen → outbox `PostingsChanged` |
+| `PostingsChanged` | worker (`ai`) | resolve affected users → recluster → keep the user's top k clusters → name them and extract requirements → compute fits |
+| User changes k | api → worker (`ai`) | cost estimate for k → user confirms → recluster → fits; lowering k retires roles without spending |
+| User subscribes to a role (with URL) | api → worker → crawler | store in `market_user` → materialise `crawl_source` without user id → single-company crawl; no board found → `manual` coverage |
 | Weekly cron, after crawl | worker (`notify`) | send `MatchDigest`; send interview-report prompts about 2 weeks after tailoring |
 | Weekly cron | worker | re-check `manual` subscriptions for a supported board; refresh `crawl_source` from `market_user` |
 | User subscribes / clicks refresh | api → crawler | single-company crawl, rate-limited per user per day |
 | User clicks "Analyze" | api → worker (`ai`) | cost estimate → user confirms → assessment → follow-up questions or fits; SPA tracks job status over SSE |
 | Connector authorized / weekly | worker (`sync`) | fetch → Evidence → `ProfileUpdated` |
 | Résumé uploaded | api → worker (`sync`) | store file → parse → Evidence and base résumé |
+| User picks a Target and generates a plan | api → worker (`ai`) | snapshot the Target's requirements → gaps → draft GapPlan → new version in plan history |
+| User reopens a plan | api | read the GapPlan version; no AI |
+| User picks a résumé Target | api → worker (`ai`) | RequirementCoverage from RoleFit → first ResumeVersion, every bullet citing Evidence |
 | Résumé chat | api | `ai_gateway.stream` over SSE; each accepted edit saves a ResumeVersion |
 | Export PDF | api → worker (`docs`) | Playwright render (white background, template) → object storage → signed URL |
 
@@ -223,7 +237,11 @@ flowchart LR
 | T6 | A single AI gateway: budget check → decrypt → provider adapter → schema validation → usage ledger |
 | T7 | Local embeddings plus HDBSCAN for dedup and clustering; the LLM only names clusters and extracts requirements |
 | T8 | ~~Managed auth provider~~ — **superseded by [ADR 0001](decisions/0001-run-our-own-email-password-sign-in.md)**: own email-and-password sign-in. Still true: FastAPI verifies JWTs on every request, and login is kept separate from connector OAuth |
-| T9 | Untrusted-input rules: parsing only in workers, delimited prompts, no side-effecting tools, schema-validated output, SSRF-guarded fetch including custom LLM base URLs |
+| T9 | Untrusted-input rules: parsing only in workers, delimited prompts, no side-effecting tools, schema-validated output, SSRF-guarded fetch including custom LLM base URLs and subscription URLs |
+| T10 | Baseline crawl: a platform-curated seed in `market.crawl_source` (`origin = 'baseline'`), loaded by `migrate`, shared zone, no user linkage |
+| T11 | The role map's k is a per-user setting in `rolemap`, bounded, with the cost estimate capped at k ([ADR 0003](decisions/0003-let-the-user-choose-how-many-roles-to-analyse.md), superseding [ADR 0002](decisions/0002-analyse-only-the-ten-closest-roles.md)) |
+| T12 | Ingestion never reaches the AI gateway: `profile` may not import `kernel.ai_gateway`, enforced by `import-linter` |
+| T13 | Gap plans are keyed by Target (kind plus reference plus frozen requirements snapshot) in the `gapplan` module; the earlier `growth` module is not built |
 
 ### Coverage of domain decisions
 
@@ -231,16 +249,21 @@ flowchart LR
 |---|---|
 | 1 Per-user dimensions | `assessment` schema, owner zone; fit computed in worker `ai` |
 | 2 / 7 Roles grouped by AI, user pays | T6, T7: per-user `rolemap`, clustering compute on the platform, naming on the user's key |
+| 4 Multiple goals | *Superseded by 16* |
 | 3 Key encrypted on server | T5, §4 secrets table |
-| 4 Multiple goals | `growth` schema; `growth.suggest_successor` handler |
 | 5 / 11 Interview difficulty, reporter incentive | T4: split storage, ≥ 3 aggregation, outcome → Evidence → `calibrate_fit` |
 | 6 Crawler, permitted sources only | T1, §1: separate `crawler`, no secrets, SSRF-guarded `kernel.fetch` |
 | 8 5–10 dimensions | Enforced in the `assessment` domain rules and output schema |
 | 9 User selects markets | `market_user.market_preference` → `market.crawl_source` without user ids |
-| 10 App suggests successor role | `RoleSplitOrMerged` → `growth.suggest_successor` |
+| 10 / 20 App suggests successor role | `RoleSplitOrMerged` → `gapplan.suggest_successor` for affected Targets |
 | 12 Private pasted JDs | T4: `market_user.private_job_posting` |
 | 13 Manual fallback for uncrawlable companies | Weekly re-check job; `coverage` column in `market_user` |
 | 14 Weekly crawl | §6 weekly cron chain; `MatchDigest` |
+| 15 Baseline crawl | T10 |
+| 16 GapPlan per Target | T13: `gapplan` schema |
+| 17 User-chosen k | T11: `rolemap.role_map_setting`, `RoleCountChanged` |
+| 18 Ingestion AI-free | T12: rule 6 |
+| 19 Role subscriptions with URL | `market_user.company_subscription` gains role and URL columns; SSRF-guarded crawl of the URL |
 
 ## 8. Open questions
 
