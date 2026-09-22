@@ -21,8 +21,16 @@ from modules.market.infra.models import Company, CompanySubscription, CrawlSourc
 log = get_logger(__name__)
 
 
-async def discover_board(deps: Any, *, owner_id: str, company_id: str, company_name: str) -> None:
-    """Look for a supported job board; fall back to manual coverage."""
+async def discover_board(
+    deps: Any,
+    *,
+    owner_id: str,
+    company_id: str,
+    company_name: str,
+    url: str | None = None,
+) -> None:
+    """Look for a supported job board, starting from the link the user gave;
+    fall back to manual coverage."""
     from crawler.discovery import discover_board as probe
 
     settings = deps.settings
@@ -30,7 +38,7 @@ async def discover_board(deps: Any, *, owner_id: str, company_id: str, company_n
         timeout_seconds=settings.crawl_http_timeout_seconds,
         user_agent=settings.crawl_user_agent,
     ) as client:
-        found = await probe(client, company_name)
+        found = await probe(client, company_name, url=url, user_agent=settings.crawl_user_agent)
 
     coverage = Coverage.CRAWLED if found is not None else Coverage.MANUAL
     await deps.market.set_coverage(uuid.UUID(owner_id), uuid.UUID(company_id), coverage)
@@ -74,15 +82,16 @@ async def refresh_company(deps: Any, *, owner_id: str, company_id: str) -> None:
         await crawler_db.dispose()
 
     async with deps.database.for_user(uuid.UUID(owner_id)) as session:
+        # Every role the user watches at this company shares its board.
         rows = await session.execute(
             select(CompanySubscription).where(
                 CompanySubscription.owner_id == uuid.UUID(owner_id),
                 CompanySubscription.company_id == uuid.UUID(company_id),
             )
         )
-        subscription = rows.scalar_one_or_none()
-        if subscription is not None:
-            subscription.last_refreshed_at = utcnow()
+        refreshed_at = utcnow()
+        for subscription in rows.scalars():
+            subscription.last_refreshed_at = refreshed_at
 
 
 async def materialize_crawl_sources(deps: Any) -> None:
@@ -90,15 +99,29 @@ async def materialize_crawl_sources(deps: Any) -> None:
 
     Deliberately loses the user ids on the way across: the crawler holds no
     user data and must not be able to infer any.
+
+    Reading every user's subscriptions is a cross-user read, so it goes through
+    the fan-out transaction and its SELECT-only policy. A ``shared()`` session
+    has no ``app.user_id`` and sees no owner-zone rows at all.
     """
-    async with deps.database.shared() as session:
+    async with deps.database.fanout() as session:
         wanted = await session.execute(
-            select(CompanySubscription.company_id, CompanySubscription.company_name).distinct()
+            select(
+                CompanySubscription.company_id,
+                CompanySubscription.company_name,
+                CompanySubscription.url,
+            ).distinct()
         )
-        rows = wanted.all()
+        # One entry per company, with the first link anyone gave for it. Only
+        # the link crosses over — never who gave it.
+        by_company: dict[Any, tuple[str, str | None]] = {}
+        for company_id, company_name, url in wanted.all():
+            name, known_url = by_company.get(company_id, (company_name, None))
+            by_company[company_id] = (name, known_url or url)
+        rows = [(cid, name, url) for cid, (name, url) in by_company.items()]
 
     added = 0
-    for company_id, company_name in rows:
+    for company_id, company_name, url in rows:
         async with deps.database.shared() as session:
             existing = await session.execute(
                 select(CrawlSource).where(CrawlSource.company_id == company_id)
@@ -115,7 +138,7 @@ async def materialize_crawl_sources(deps: Any) -> None:
             timeout_seconds=settings.crawl_http_timeout_seconds,
             user_agent=settings.crawl_user_agent,
         ) as client:
-            found = await probe(client, name)
+            found = await probe(client, name, url=url, user_agent=settings.crawl_user_agent)
         if found is None:
             continue
         async with deps.database.shared() as session:

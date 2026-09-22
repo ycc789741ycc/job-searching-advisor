@@ -78,9 +78,14 @@ class CrawlSourceView:
 
 @dataclass(frozen=True, slots=True)
 class CompanySubscriptionView:
+    """A RoleSubscription: one role at one company (domain decision 19)."""
+
     id: uuid.UUID
     company_id: uuid.UUID
     company_name: str
+    role_title: str
+    role_id: uuid.UUID | None
+    url: str | None
     coverage: Coverage
     last_refreshed_at: datetime | None
 
@@ -213,10 +218,35 @@ class MarketService:
             )
             return [_subscription_view(row) for row in rows.scalars()]
 
-    async def subscribe(self, owner_id: uuid.UUID, *, company_name: str) -> CompanySubscriptionView:
+    async def subscription(
+        self, owner_id: uuid.UUID, subscription_id: uuid.UUID
+    ) -> CompanySubscriptionView:
+        async with self._db.for_user(owner_id) as session:
+            row = await session.get(CompanySubscription, subscription_id)
+            if row is None or row.owner_id != owner_id:
+                raise NotFoundError("subscription not found", subscription_id=str(subscription_id))
+            return _subscription_view(row)
+
+    async def subscribe(
+        self,
+        owner_id: uuid.UUID,
+        *,
+        company_name: str,
+        role_title: str,
+        role_id: uuid.UUID | None = None,
+        url: str | None = None,
+    ) -> CompanySubscriptionView:
+        """Watch one role at one company. Subscribing again to the same role
+        there updates its link rather than adding a duplicate."""
         name = company_name.strip()
         if not name:
             raise ValidationError("a company name is required")
+        title = role_title.strip()
+        if not title:
+            raise ValidationError("a role is required")
+        link = (url or "").strip() or None
+        if link is not None and not link.lower().startswith(("https://", "http://")):
+            raise ValidationError("a link must start with http:// or https://")
 
         async with self._db.shared() as shared:
             company = await _ensure_company(shared, name)
@@ -227,15 +257,32 @@ class MarketService:
                 select(CompanySubscription).where(
                     CompanySubscription.owner_id == owner_id,
                     CompanySubscription.company_id == company_id,
+                    CompanySubscription.role_title == title,
                 )
             )
             subscription = existing.scalar_one_or_none()
-            if subscription is None:
+            if subscription is not None:
+                subscription.role_id = role_id or subscription.role_id
+                subscription.url = link or subscription.url
+                await session.flush()
+            else:
+                # Coverage belongs to the company's board, so a new role at an
+                # already-watched company starts from what is known about it.
+                known = await session.execute(
+                    select(CompanySubscription.coverage).where(
+                        CompanySubscription.owner_id == owner_id,
+                        CompanySubscription.company_id == company_id,
+                    )
+                )
+                coverage = known.scalars().first() or str(Coverage.MANUAL)
                 subscription = CompanySubscription(
                     owner_id=owner_id,
                     company_id=company_id,
                     company_name=resolved_name,
-                    coverage=str(Coverage.MANUAL),
+                    role_title=title,
+                    role_id=role_id,
+                    url=link,
+                    coverage=coverage,
                 )
                 session.add(subscription)
                 await session.flush()
@@ -260,16 +307,10 @@ class MarketService:
                 .values(coverage=str(coverage))
             )
 
-    async def unsubscribe(self, owner_id: uuid.UUID, company_id: uuid.UUID) -> None:
+    async def unsubscribe(self, owner_id: uuid.UUID, subscription_id: uuid.UUID) -> None:
         async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(CompanySubscription).where(
-                    CompanySubscription.owner_id == owner_id,
-                    CompanySubscription.company_id == company_id,
-                )
-            )
-            subscription = rows.scalar_one_or_none()
-            if subscription is not None:
+            subscription = await session.get(CompanySubscription, subscription_id)
+            if subscription is not None and subscription.owner_id == owner_id:
                 await session.delete(subscription)
 
     async def markets(self, owner_id: uuid.UUID) -> list[str]:
@@ -568,6 +609,9 @@ def _subscription_view(row: CompanySubscription) -> CompanySubscriptionView:
         id=row.id,
         company_id=row.company_id,
         company_name=row.company_name,
+        role_title=row.role_title,
+        role_id=row.role_id,
+        url=row.url,
         coverage=Coverage(row.coverage),
         last_refreshed_at=row.last_refreshed_at,
     )

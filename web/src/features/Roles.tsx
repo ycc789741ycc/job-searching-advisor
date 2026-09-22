@@ -32,12 +32,14 @@ export function Roles() {
   );
   const fits = useAsync<Fit[]>(() => api.get("/fits"), []);
   const subscriptions = useAsync<Subscription[]>(
-    () => api.get("/company-subscriptions"),
+    () => api.get("/role-subscriptions"),
     [],
   );
   const markets = useAsync<string[]>(() => api.get("/market-preferences"), []);
 
   const [company, setCompany] = useState("");
+  const [watchRole, setWatchRole] = useState("");
+  const [watchUrl, setWatchUrl] = useState("");
   const [market, setMarket] = useState("");
   const [estimate, setEstimate] = useState<CostEstimate | null>(null);
   // The k being considered; saved only once its estimate is confirmed.
@@ -144,27 +146,64 @@ export function Roles() {
           <div style={{ flex: "1 1 220px" }}>
             <label
               style={{ fontSize: 13.5, fontWeight: 600 }}
-              htmlFor="company-input"
+              htmlFor="watch-role-input"
             >
-              Companies to watch
+              Roles to watch
             </label>
-            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                marginTop: 4,
+                flexWrap: "wrap",
+              }}
+            >
               <input
-                id="company-input"
+                id="watch-role-input"
+                aria-label="Role"
+                list="watch-role-options"
+                style={inputStyle}
+                value={watchRole}
+                placeholder="Senior Backend Engineer"
+                onChange={(event) => setWatchRole(event.target.value)}
+              />
+              <datalist id="watch-role-options">
+                {(roles.data ?? []).map((role) => (
+                  <option key={role.id} value={role.name} />
+                ))}
+              </datalist>
+              <input
+                aria-label="Company"
                 style={inputStyle}
                 value={company}
                 placeholder="Northwind Pay"
                 onChange={(event) => setCompany(event.target.value)}
               />
+              <input
+                aria-label="Careers or JD link"
+                type="url"
+                style={inputStyle}
+                value={watchUrl}
+                placeholder="Careers or JD link (optional)"
+                onChange={(event) => setWatchUrl(event.target.value)}
+              />
               <Button
                 variant="secondary"
-                disabled={!company.trim()}
+                disabled={!company.trim() || !watchRole.trim()}
                 onClick={() =>
-                  act("company added", async () => {
-                    await api.post("/company-subscriptions", {
+                  act("role added to your watchlist", async () => {
+                    const known = (roles.data ?? []).find(
+                      (role) => role.name === watchRole.trim(),
+                    );
+                    await api.post("/role-subscriptions", {
                       company_name: company,
+                      role_title: watchRole,
+                      role_id: known?.id ?? null,
+                      url: watchUrl.trim() || null,
                     });
                     setCompany("");
+                    setWatchRole("");
+                    setWatchUrl("");
                     await subscriptions.reload();
                   })
                 }
@@ -177,11 +216,31 @@ export function Roles() {
               style={{ fontSize: 12.5, margin: "6px 0 0", paddingLeft: 16 }}
             >
               {(subscriptions.data ?? []).map((subscription) => (
-                <li key={subscription.company_id}>
+                <li key={subscription.id}>
+                  {subscription.role_title || "Any role"} ·{" "}
                   {subscription.company_name}
+                  {" — "}
+                  {subscription.url ? (
+                    <a href={subscription.url} rel="noreferrer" target="_blank">
+                      {subscription.url.replace(/^https?:\/\//, "")}
+                    </a>
+                  ) : (
+                    "no link saved"
+                  )}
                   {subscription.coverage === "manual" && (
                     <> — no job board we can read; paste a JD instead</>
-                  )}
+                  )}{" "}
+                  <Button
+                    variant="secondary"
+                    onClick={() =>
+                      act("removed from your watchlist", async () => {
+                        await api.del(`/role-subscriptions/${subscription.id}`);
+                        await subscriptions.reload();
+                      })
+                    }
+                  >
+                    Remove
+                  </Button>
                 </li>
               ))}
             </ul>
