@@ -161,9 +161,11 @@ lint:
 	    --cache-dir /tmp/import-linter
 	$(RUN_HERMETIC) $(WEB_TEST_IMAGE) npx eslint src
 
+# web/tsconfig.json lists no files, only a reference to tsconfig.app.json, so a
+# bare `tsc --noEmit` there checks nothing. Name the project that holds src/.
 typecheck:
 	$(RUN_HERMETIC) $(BACKEND_TEST_IMAGE) mypy .
-	$(RUN_HERMETIC) $(WEB_TEST_IMAGE) npx tsc --noEmit
+	$(RUN_HERMETIC) $(WEB_TEST_IMAGE) npx tsc -p tsconfig.app.json --noEmit
 
 # Dependencies, and the prod images themselves: prod is what gets promoted, so
 # prod is what gets scanned.
