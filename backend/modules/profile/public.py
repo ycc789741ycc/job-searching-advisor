@@ -293,6 +293,32 @@ class ProfileService:
                 resume.parse_error = None
         return written
 
+    async def base_resume_text(self, owner_id: uuid.UUID, *, max_chars: int = 12_000) -> str | None:
+        """The latest parsed résumé's text: what a new résumé revises, not replaces.
+
+        Worker only — parsing never happens in a request handler. None when the
+        user has not uploaded one that parsed.
+        """
+        async with self._db.for_user(owner_id) as session:
+            latest = await session.execute(
+                select(ResumeFile)
+                .where(ResumeFile.owner_id == owner_id, ResumeFile.status == "parsed")
+                .order_by(ResumeFile.parsed_at.desc())
+                .limit(1)
+            )
+            resume = latest.scalar_one_or_none()
+            if resume is None:
+                return None
+            key, content_type, filename = resume.storage_key, resume.content_type, resume.filename
+
+        parsed = parse(
+            self._store.get(key),
+            content_type=content_type,
+            filename=filename,
+            max_pages=self._resume_max_pages,
+        )
+        return parsed.text[:max_chars]
+
     async def resumes(self, owner_id: uuid.UUID) -> list[ResumeFileView]:
         async with self._db.for_user(owner_id) as session:
             rows = await session.execute(select(ResumeFile).where(ResumeFile.owner_id == owner_id))

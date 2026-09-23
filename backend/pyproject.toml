@@ -33,6 +33,9 @@ dependencies = [
   # Document parsing (worker only)
   "pypdf>=5.1",
   "python-docx>=1.1",
+  # Résumé PDF export (worker `docs` queue): HTML/CSS to PDF with no browser
+  # and no JavaScript engine (ADR 0007). Needs Pango, installed in the image.
+  "weasyprint>=65",
   # Local ML: embeddings + clustering. Platform-paid, never the user's key.
   "sentence-transformers>=3.3",
   # Declared explicitly so it can be pinned to the CPU-only wheel index below.
@@ -93,7 +96,7 @@ plugins = ["pydantic.mypy"]
 exclude = "^migrations/versions/"
 
 [[tool.mypy.overrides]]
-module = ["pgvector.*", "sentence_transformers.*", "sklearn.*", "procrastinate.*"]
+module = ["pgvector.*", "sentence_transformers.*", "sklearn.*", "procrastinate.*", "weasyprint.*"]
 ignore_missing_imports = true
 
 # Production code is strict. Tests are not required to annotate every fixture

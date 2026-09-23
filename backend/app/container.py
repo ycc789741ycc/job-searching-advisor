@@ -21,6 +21,7 @@ from modules.identity.public import AuthService, IdentityService
 from modules.market.public import CrawlIngest, MarketService
 from modules.profile.infra.connectors import GitHubConnector, JiraConnector
 from modules.profile.public import ProfileService
+from modules.resume.public import ResumeService
 from modules.rolemap.public import RoleMapService
 from modules.target.public import TargetService
 
@@ -37,6 +38,7 @@ class Container:
     assessment: AssessmentService
     target: TargetService
     gapplan: GapPlanService
+    resume: ResumeService
     object_store: ObjectStore
     _verifier: TokenVerifier | None = None
 
@@ -122,6 +124,14 @@ def build(settings: Settings | None = None) -> Container:
         rolemap=rolemap,
         gateway=gateway,
     )
+    resume = ResumeService(
+        database,
+        target=target,
+        profile=profile,
+        assessment=assessment,
+        gateway=gateway,
+        object_store=object_store,
+    )
 
     return Container(
         settings=settings,
@@ -134,6 +144,7 @@ def build(settings: Settings | None = None) -> Container:
         assessment=assessment,
         target=target,
         gapplan=gapplan,
+        resume=resume,
         object_store=object_store,
     )
 

@@ -31,3 +31,17 @@ describe("api client", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("server-sent events", () => {
+  it("splits complete events and keeps a partial one for later", async () => {
+    const { parseEvents } = await import("./client");
+    const { events, rest } = parseEvents(
+      'event: text\ndata: {"text":"Hi"}\n\nevent: proposal\r\ndata: {"a":1}\r\n\r\nevent: te',
+    );
+    expect(events).toEqual([
+      { event: "text", data: '{"text":"Hi"}' },
+      { event: "proposal", data: '{"a":1}' },
+    ]);
+    expect(rest).toBe("event: te");
+  });
+});

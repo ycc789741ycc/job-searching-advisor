@@ -1,9 +1,9 @@
 """Queued and scheduled work, on Postgres.
 
-Phase 1 runs two queues in one worker image: ``ai`` (assessment, cluster
-naming, requirement extraction, difficulty estimates, fits) and ``sync``
-(connectors, resume parsing). ``docs`` and ``notify`` arrive with the Resume
-and digest work in later phases. Splitting a queue into its own process group
+The worker image runs three queues: ``ai`` (assessment, cluster naming,
+requirement extraction, difficulty estimates, fits, gap plans, résumé writing),
+``sync`` (connectors, resume parsing) and ``docs`` (résumé PDF export).
+``notify`` arrives with the digest work. Splitting a queue into its own process group
 later is a deployment change, not a code change
 (docs/technical_boundaries.md section 1).
 """
@@ -20,6 +20,7 @@ from kernel.config import Settings
 class Queue(StrEnum):
     AI = "ai"
     SYNC = "sync"
+    DOCS = "docs"
 
 
 def _psycopg_dsn(sqlalchemy_url: str) -> str:

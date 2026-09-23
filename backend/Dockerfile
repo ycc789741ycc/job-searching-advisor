@@ -37,6 +37,17 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Internal. `test` builds on it, and `prod` at the end of the file re-tags it.
 FROM python:3.12.14-slim-bookworm AS base
 
+# WeasyPrint renders résumé PDFs through Pango (ADR 0007), and the templates set
+# type in DejaVu. Pinned to what bookworm ships; their own dependencies follow
+# Debian's security updates.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      libpango-1.0-0=1.50.12+ds-1 \
+      libpangoft2-1.0-0=1.50.12+ds-1 \
+      libharfbuzz-subset0=6.0.0+dfsg-3 \
+      fonts-dejavu-core=2.37-6 \
+ && rm -rf /var/lib/apt/lists/*
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \

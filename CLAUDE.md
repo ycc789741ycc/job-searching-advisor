@@ -121,9 +121,10 @@ backend/
   kernel/     technical kernel, no domain: db, outbox, jobs, auth, crypto, storage,
               ai_gateway, fetch, embeddings
   domain/     the domain model, one package per feature: identity · profile · market ·
-              rolemap · assessment · target · gapplan. Pure rules, no I/O, no
-              framework, no kernel.
-  modules/    identity · profile · market · rolemap · assessment · target · gapplan
+              rolemap · assessment · target · gapplan · resume. Pure rules, no
+              I/O, no framework, no kernel.
+  modules/    identity · profile · market · rolemap · assessment · target ·
+              gapplan · resume
                 public.py   the ONLY importable surface
                 api.py      FastAPI routers
                 infra/      repositories and adapters
@@ -137,7 +138,7 @@ module, as the design guideline requires (its ADR 0002). `modules/<m>` uses only
 `domain/<m>`; another module's rules are reached through that module's
 `public.py`. Domain feature packages never import each other.
 
-Fifteen `import-linter` contracts in `backend/.importlinter` enforce those boundaries, and
+Sixteen `import-linter` contracts in `backend/.importlinter` enforce those boundaries, and
 they run in CI. If one breaks, the design is wrong, not the contract.
 
 ## Things that are deliberate
@@ -184,8 +185,15 @@ work carried forward, and plan history. `target` resolves what a plan aims at
 and has no tables (ADR 0005). Drafting is a job whose row the page polls
 (ADR 0006).
 
-Coming in Phase 2: `resume` (generation, versions, chat, export). Not yet:
-suggesting a successor Target when a Role splits — rolemap does not emit
-`RoleSplitOrMerged` yet. The hiring bar is `estimated` only — `InterviewReport`
+And the Resume Advisor: a résumé written for a Target from cited evidence, over
+the uploaded résumé when there is one, with requirement coverage decided by
+scores; in-place editing saved as versions; a revision chat streamed over SSE
+whose proposals apply only on request; and PDF export on the worker's `docs`
+queue with WeasyPrint (ADR 0007). Its routes are `/tailored-resumes` —
+`/resumes` is the profile's upload endpoint.
+
+Not yet: suggesting a successor Target when a Role splits (rolemap does not
+emit `RoleSplitOrMerged` yet), and the interview-report prompt after a résumé
+is tailored. The hiring bar is `estimated` only — `InterviewReport`
 arrives with the reporting flow later. Google login is Phase 3, as our own
 OAuth exchange that issues our own session token.

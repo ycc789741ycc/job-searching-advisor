@@ -12,6 +12,7 @@ new record that supersedes the old one.
 | [0004](0004-build-the-spa-on-the-prototypes-design-system.md) | Build the SPA on the prototype's design system and sidebar shell | Accepted |
 | [0005](0005-resolve-targets-in-their-own-module.md) | Resolve Targets in their own module | Accepted |
 | [0006](0006-report-ai-job-progress-through-a-status-the-page-polls.md) | Report AI job progress through a status the page polls | Accepted |
+| [0007](0007-render-resume-pdfs-with-weasyprint.md) | Render résumé PDFs with WeasyPrint, not a headless browser | Accepted |
 
 Decisions taken before this directory existed are recorded in the tables of
 `docs/domain_model_review.md` section 6 and `docs/technical_boundaries.md`

@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from pydantic import BaseModel
@@ -241,3 +242,89 @@ async def test_estimate_prices_a_call_without_making_one(
     assert estimate.model_id == "claude-opus-5"
     assert estimate.rate_is_published is True
     assert provider.requests == [] and budget.recorded == []
+
+
+# -- structured streaming (the résumé chat) ---------------------------------
+
+MARKER = "<<<PROPOSAL>>>"
+
+
+async def _collect(gw: AiGateway) -> tuple[str, list[Any]]:
+    from kernel.ai_gateway import StreamResult, StreamText
+
+    text: str = ""
+    results: list[Any] = []
+    async for event in gw.stream_structured(
+        OWNER,
+        task="revise",
+        template=TEMPLATE,
+        inputs={"subject": "a résumé"},
+        output_schema=Answer,
+        marker=MARKER,
+    ):
+        if isinstance(event, StreamText):
+            text += event.text
+        else:
+            assert isinstance(event, StreamResult)
+            results.append(event)
+    return text, results
+
+
+async def test_prose_streams_and_the_object_after_the_marker_is_validated(
+    gateway: tuple[AiGateway, StubCredentials, StubBudget], stub_provider
+) -> None:
+    gw, _, budget = gateway
+    stub_provider(["Shorter summary, ", "sharper lead.\n", MARKER, '{"name": "x", "score": 3}'])
+
+    text, results = await _collect(gw)
+
+    assert text == "Shorter summary, sharper lead.\n"
+    [result] = results
+    assert result.value == Answer(name="x", score=3)
+    assert result.template_version == "stub_task@v1"
+    assert len(budget.recorded) == 1
+
+
+async def test_a_marker_split_across_chunks_never_leaks_to_the_reader(
+    gateway: tuple[AiGateway, StubCredentials, StubBudget], stub_provider
+) -> None:
+    gw, _, _ = gateway
+    stub_provider(["Done. <<<PRO", "POSAL>>>", '{"name": "y", "score": 1}'])
+
+    text, results = await _collect(gw)
+
+    assert text == "Done. "
+    assert "<" not in text
+    assert len(results) == 1
+
+
+async def test_text_that_only_looks_like_the_start_of_the_marker_is_released(
+    gateway: tuple[AiGateway, StubCredentials, StubBudget], stub_provider
+) -> None:
+    gw, _, _ = gateway
+    stub_provider(["a << b", " and more", MARKER, '{"name": "z", "score": 2}'])
+
+    text, _ = await _collect(gw)
+
+    assert text == "a << b and more"
+
+
+async def test_a_reply_with_no_structured_part_is_rejected_after_its_text(
+    gateway: tuple[AiGateway, StubCredentials, StubBudget], stub_provider
+) -> None:
+    gw, _, _ = gateway
+    stub_provider(["Just advice, no proposal."])
+
+    with pytest.raises(OutputInvalidError, match="without its structured part"):
+        await _collect(gw)
+
+
+async def test_an_invalid_structured_part_is_rejected_without_a_retry(
+    gateway: tuple[AiGateway, StubCredentials, StubBudget], stub_provider
+) -> None:
+    gw, _, _ = gateway
+    provider = stub_provider(["Here.", MARKER, '{"name": "x"}'])
+
+    with pytest.raises(OutputInvalidError, match="did not match the schema"):
+        await _collect(gw)
+    assert len(provider.requests) == 1

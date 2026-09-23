@@ -3,7 +3,7 @@ import { api } from "./api/client";
 import type { Assessment, Credential, Me, Question } from "./api/types";
 import { useAuth } from "./auth/AuthProvider";
 import { SignInScreen } from "./auth/SignInScreen";
-import { EmptyState, Loading } from "./components/ui";
+import { Loading } from "./components/ui";
 import { AiSettings } from "./features/AiSettings";
 import { Clarify } from "./features/Clarify";
 import { Connect } from "./features/Connect";
@@ -12,6 +12,7 @@ import {
   completeCallback,
   type CallbackOutcome,
 } from "./features/oauthCallback";
+import { Resume } from "./features/Resume";
 import { Roles } from "./features/Roles";
 import { Strengths } from "./features/Strengths";
 import {
@@ -175,12 +176,7 @@ function Shell() {
             {screen === "strengths" && <Strengths />}
             {screen === "roles" && <Roles />}
             {screen === "plan" && <GapPlan />}
-            {screen === "resume" && (
-              <EmptyState title="Résumé writing is on its way">
-                Tailoring a résumé to one role at a time arrives in the next
-                release.
-              </EmptyState>
-            )}
+            {screen === "resume" && <Resume />}
             {screen === "model" && <AiSettings />}
           </div>
         </main>

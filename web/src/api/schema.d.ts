@@ -584,6 +584,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/resume-exports/{export_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Export */
+        get: operations["get_export_api_v1_resume_exports__export_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/resumes": {
         parameters: {
             query?: never;
@@ -755,6 +772,162 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tailored-resumes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Saved
+         * @description Saved résumés, most recently changed first.
+         */
+        get: operations["saved_api_v1_tailored_resumes_get"];
+        put?: never;
+        /**
+         * Write Resume
+         * @description Records the résumé as drafting and queues it; poll ``GET /tailored-resumes/{id}``.
+         */
+        post: operations["write_resume_api_v1_tailored_resumes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tailored-resumes/cost-estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cost Estimate
+         * @description Writing runs on the user's key, so it is priced first.
+         */
+        get: operations["cost_estimate_api_v1_tailored_resumes_cost_estimate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tailored-resumes/{resume_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Resume */
+        get: operations["get_resume_api_v1_tailored_resumes__resume_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tailored-resumes/{resume_id}/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Export
+         * @description Renders on the worker's ``docs`` queue; poll ``GET /resume-exports/{id}``.
+         */
+        post: operations["request_export_api_v1_tailored_resumes__resume_id__exports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tailored-resumes/{resume_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revise
+         * @description The revision chat. Events: ``text`` as prose arrives, then exactly one of
+         *     ``proposal`` (applied only on request) or ``error`` ({code, message}).
+         */
+        post: operations["revise_api_v1_tailored_resumes__resume_id__revisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tailored-resumes/{resume_id}/revisions/{revision_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Revision
+         * @description An accepted chat edit becomes a new version.
+         */
+        post: operations["apply_revision_api_v1_tailored_resumes__resume_id__revisions__revision_id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tailored-resumes/{resume_id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Settings */
+        put: operations["update_settings_api_v1_tailored_resumes__resume_id__settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tailored-resumes/{resume_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save Version */
+        post: operations["save_version_api_v1_tailored_resumes__resume_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/targets": {
         parameters: {
             query?: never;
@@ -844,6 +1017,11 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** ExportRequest */
+        ExportRequest: {
+            /** Version */
+            version: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -867,6 +1045,24 @@ export interface components {
             /** Market */
             market: string;
         };
+        /** OptionsBody */
+        OptionsBody: {
+            /**
+             * Metrics
+             * @default true
+             */
+            metrics: boolean;
+            /**
+             * Reorder
+             * @default true
+             */
+            reorder: boolean;
+            /**
+             * Trim
+             * @default false
+             */
+            trim: boolean;
+        };
         /** RegisterRequest */
         RegisterRequest: {
             /**
@@ -876,6 +1072,27 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /** ResumeRequest */
+        ResumeRequest: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["TargetKind"];
+            options?: components["schemas"]["OptionsBody"];
+            /** @default warm */
+            template: components["schemas"]["Template"];
+        };
+        /** RevisionRequest */
+        RevisionRequest: {
+            /** Content */
+            content: {
+                [key: string]: unknown;
+            };
+            /** Message */
+            message: string;
         };
         /**
          * RoleMapSettings
@@ -902,6 +1119,11 @@ export interface components {
             email: string;
             /** Expires In */
             expires_in: number;
+        };
+        /** SettingsRequest */
+        SettingsRequest: {
+            options: components["schemas"]["OptionsBody"];
+            template: components["schemas"]["Template"];
         };
         /** SignInRequest */
         SignInRequest: {
@@ -949,6 +1171,12 @@ export interface components {
              */
             done: boolean;
         };
+        /**
+         * Template
+         * @description Visual layout for export: rendering only, never a domain rule.
+         * @enum {string}
+         */
+        Template: "warm" | "plain" | "brief";
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -961,6 +1189,15 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VersionRequest */
+        VersionRequest: {
+            /** Content */
+            content: {
+                [key: string]: unknown;
+            };
+            /** Label */
+            label?: string | null;
         };
     };
     responses: never;
@@ -2213,6 +2450,41 @@ export interface operations {
             };
         };
     };
+    get_export_api_v1_resume_exports__export_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                export_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_resumes_api_v1_resumes_get: {
         parameters: {
             query?: never;
@@ -2608,6 +2880,335 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoleMapSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    saved_api_v1_tailored_resumes_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    write_resume_api_v1_tailored_resumes_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResumeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cost_estimate_api_v1_tailored_resumes_cost_estimate_get: {
+        parameters: {
+            query: {
+                kind: components["schemas"]["TargetKind"];
+                id: string;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resume_api_v1_tailored_resumes__resume_id__get: {
+        parameters: {
+            query?: {
+                version?: number | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                resume_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_export_api_v1_tailored_resumes__resume_id__exports_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                resume_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_api_v1_tailored_resumes__resume_id__revisions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                resume_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_revision_api_v1_tailored_resumes__resume_id__revisions__revision_id__apply_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                resume_id: string;
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_settings_api_v1_tailored_resumes__resume_id__settings_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                resume_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_version_api_v1_tailored_resumes__resume_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                resume_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

@@ -1,8 +1,9 @@
 """The ``worker`` deployable: queued jobs and the outbox dispatcher.
 
-Phase 1 runs two queues in one process: ``ai`` (assessment, role naming,
-requirement extraction, difficulty estimates, fits) and ``sync`` (connectors,
-resume parsing). Splitting them is a deployment change, not a code change.
+Three queues run in one process: ``ai`` (assessment, role naming, requirement
+extraction, difficulty estimates, fits, gap plans, résumé writing), ``sync``
+(connectors, resume parsing) and ``docs`` (résumé PDF export). Splitting them
+is a deployment change, not a code change.
 """
 
 from __future__ import annotations
@@ -43,9 +44,10 @@ async def main() -> None:
 
     async with app.open_async():
         dispatcher = asyncio.create_task(_dispatch_loop())
-        log.info("worker.started", queues=[str(Queue.AI), str(Queue.SYNC)])
+        queues = [str(Queue.AI), str(Queue.SYNC), str(Queue.DOCS)]
+        log.info("worker.started", queues=queues)
         try:
-            await app.run_worker_async(queues=[str(Queue.AI), str(Queue.SYNC)])
+            await app.run_worker_async(queues=queues)
         finally:
             dispatcher.cancel()
             with contextlib.suppress(asyncio.CancelledError):
