@@ -8,6 +8,10 @@ has: authentication runs *before* there is an `app.user_id` to compare
 against, by definition. The policies therefore allow access when the setting
 is unset — which only the authentication path does — and restrict to the owner
 whenever it is set, which is every request handler.
+
+The baseline builds its tables from the live ORM metadata, so on a fresh
+database everything here already exists. Every statement is therefore guarded,
+as in the later migrations, and the policies are replaced rather than added.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ def upgrade() -> None:
         "WHERE email IS NULL"
     )
     op.execute("ALTER TABLE identity.account ALTER COLUMN email SET NOT NULL")
+    op.execute("ALTER TABLE identity.account DROP CONSTRAINT IF EXISTS uq_account_email")
     op.execute("ALTER TABLE identity.account ADD CONSTRAINT uq_account_email UNIQUE (email)")
     # Null for an account that only has a password; reserved for a later
     # external identity such as Google.
@@ -41,7 +46,7 @@ def upgrade() -> None:
     # --- password_credential ------------------------------------------------
     op.execute(
         """
-        CREATE TABLE identity.password_credential (
+        CREATE TABLE IF NOT EXISTS identity.password_credential (
             id uuid PRIMARY KEY,
             owner_id uuid NOT NULL,
             account_id uuid NOT NULL
@@ -57,7 +62,8 @@ def upgrade() -> None:
         """
     )
     op.execute(
-        "CREATE INDEX ix_password_credential_owner_id ON identity.password_credential (owner_id)"
+        "CREATE INDEX IF NOT EXISTS ix_password_credential_owner_id "
+        "ON identity.password_credential (owner_id)"
     )
 
     # --- refresh_token ------------------------------------------------------
@@ -65,7 +71,7 @@ def upgrade() -> None:
     # over live sessions.
     op.execute(
         """
-        CREATE TABLE identity.refresh_token (
+        CREATE TABLE IF NOT EXISTS identity.refresh_token (
             id uuid PRIMARY KEY,
             owner_id uuid NOT NULL,
             account_id uuid NOT NULL
@@ -81,15 +87,21 @@ def upgrade() -> None:
         """
     )
     op.execute(
-        "CREATE INDEX ix_refresh_token_owner_family ON identity.refresh_token (owner_id, family_id)"
+        "CREATE INDEX IF NOT EXISTS ix_refresh_token_owner_family "
+        "ON identity.refresh_token (owner_id, family_id)"
     )
-    op.execute("CREATE INDEX ix_refresh_token_owner_id ON identity.refresh_token (owner_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_refresh_token_owner_id ON identity.refresh_token (owner_id)"
+    )
 
     # --- grants and row-level security -------------------------------------
     for table in _NEW_TABLES:
         op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON identity.{table} TO app_rw")
         op.execute(f"ALTER TABLE identity.{table} ENABLE ROW LEVEL SECURITY")
         op.execute(f"ALTER TABLE identity.{table} FORCE ROW LEVEL SECURITY")
+        # On a fresh database the baseline has already given these tables the
+        # ordinary owner-only policy; this one replaces it.
+        op.execute(f"DROP POLICY IF EXISTS owner_isolation ON identity.{table}")
         op.execute(
             f"CREATE POLICY owner_isolation ON identity.{table} FOR ALL "
             f"USING (coalesce(current_setting('{_APP_USER}', true), '') = '' "
