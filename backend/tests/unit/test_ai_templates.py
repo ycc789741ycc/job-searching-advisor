@@ -13,6 +13,9 @@ PHASE_1_TEMPLATES = [
     "role_extraction",
     "difficulty_estimate",
     "fit_projection",
+    # Phase 2
+    "posting_requirements",
+    "gap_plan",
 ]
 
 

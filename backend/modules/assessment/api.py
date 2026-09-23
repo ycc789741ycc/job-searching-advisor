@@ -118,6 +118,7 @@ async def matched_postings(
             "fit": m.fit,
             "fit_basis": "role",
             "subscription_id": str(m.subscription_id) if m.subscription_id else None,
+            "source_kind": m.source_kind,
         }
         for m in await deps.assessment.matched_postings(user, limit=limit)
     ]

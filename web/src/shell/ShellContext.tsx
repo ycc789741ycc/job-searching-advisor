@@ -12,9 +12,16 @@ export interface ShellStatus {
   confidence: number | null;
 }
 
+/** What one screen hands the next: Role map → Gap plan or Résumé. */
+export interface Handoff {
+  roleId?: string;
+}
+
 export interface Shell {
   status: ShellStatus;
-  navigate: (screen: Screen) => void;
+  navigate: (screen: Screen, handoff?: Handoff) => void;
+  /** Set by the last navigate(); read once by the screen it opened. */
+  handoff: Handoff | null;
   /** Re-reads the status, after something a screen did changed it. */
   refresh: () => Promise<void>;
   /** The header's target chip: what the plan or résumé is aimed at. */
@@ -32,6 +39,7 @@ const EMPTY: ShellStatus = {
 export const ShellContext = createContext<Shell>({
   status: EMPTY,
   navigate: () => {},
+  handoff: null,
   refresh: async () => {},
   target: null,
   setTarget: () => {},

@@ -55,10 +55,12 @@ def create_app() -> FastAPI:
     errors.install(application)
 
     from modules.assessment.api import router as assessment_router
+    from modules.gapplan.api import router as gapplan_router
     from modules.identity.api import router as identity_router
     from modules.market.api import router as market_router
     from modules.profile.api import router as profile_router
     from modules.rolemap.api import router as rolemap_router
+    from modules.target.api import router as target_router
 
     for router in (
         identity_router,
@@ -66,6 +68,8 @@ def create_app() -> FastAPI:
         market_router,
         rolemap_router,
         assessment_router,
+        target_router,
+        gapplan_router,
     ):
         application.include_router(router, prefix="/api/v1")
 

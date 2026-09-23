@@ -11,6 +11,7 @@ important output here.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 # How much an uncovered requirement costs, relative to a dimension scored zero
@@ -109,3 +110,36 @@ def evaluate(
     ratio = (shortfall + uncovered_penalty) / denominator
     score = round(max(0.0, min(1.0, 1.0 - ratio)) * 100)
     return FitResult(score=score, gaps=gaps, uncovered=tuple(uncovered))
+
+
+@dataclass(frozen=True, slots=True)
+class ClosingLifts:
+    """Fit points each gap is worth: what closing it alone would add."""
+
+    by_dimension: dict[str, int]
+    by_uncovered: tuple[int, ...]
+
+
+def closing_lifts(
+    *, gaps: Sequence[SkillGap], uncovered: Sequence[UncoveredRequirement]
+) -> ClosingLifts:
+    """Rank gaps by what they cost, with the same arithmetic as ``evaluate``.
+
+    Closing one gap removes its share of the shortfall from the ratio, so it is
+    worth ``100 * shortfall / denominator`` points. Gaps a user already clears
+    are worth nothing and are left out. Rounding and the 0-100 clamp mean the
+    lifts need not sum exactly to the distance from 100.
+    """
+    possible = sum(gap.target_score for gap in gaps)
+    uncovered_possible = sum(100 * r.weight for r in uncovered)
+    denominator = possible + uncovered_possible
+    if denominator == 0:
+        return ClosingLifts(by_dimension={}, by_uncovered=tuple(0 for _ in uncovered))
+    return ClosingLifts(
+        by_dimension={
+            gap.dimension_id: round(100 * -gap.delta / denominator) for gap in gaps if gap.is_gap
+        },
+        by_uncovered=tuple(
+            round(100 * 100 * _UNCOVERED_PENALTY * r.weight / denominator) for r in uncovered
+        ),
+    )

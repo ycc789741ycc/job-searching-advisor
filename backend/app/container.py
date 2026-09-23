@@ -16,11 +16,13 @@ from kernel.config import Settings, Unit, get_settings, must
 from kernel.db import Database
 from kernel.storage import ObjectStore
 from modules.assessment.public import AssessmentService
+from modules.gapplan.public import GapPlanService
 from modules.identity.public import AuthService, IdentityService
 from modules.market.public import CrawlIngest, MarketService
 from modules.profile.infra.connectors import GitHubConnector, JiraConnector
 from modules.profile.public import ProfileService
 from modules.rolemap.public import RoleMapService
+from modules.target.public import TargetService
 
 
 @dataclass
@@ -33,6 +35,8 @@ class Container:
     market: MarketService
     rolemap: RoleMapService
     assessment: AssessmentService
+    target: TargetService
+    gapplan: GapPlanService
     object_store: ObjectStore
     _verifier: TokenVerifier | None = None
 
@@ -109,6 +113,15 @@ def build(settings: Settings | None = None) -> Container:
         gateway=gateway,
         confidence_threshold=settings.assessment_confidence_threshold,
     )
+    target = TargetService(assessment=assessment, market=market, rolemap=rolemap)
+    gapplan = GapPlanService(
+        database,
+        target=target,
+        profile=profile,
+        assessment=assessment,
+        rolemap=rolemap,
+        gateway=gateway,
+    )
 
     return Container(
         settings=settings,
@@ -119,6 +132,8 @@ def build(settings: Settings | None = None) -> Container:
         market=market,
         rolemap=rolemap,
         assessment=assessment,
+        target=target,
+        gapplan=gapplan,
         object_store=object_store,
     )
 

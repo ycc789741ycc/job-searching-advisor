@@ -34,6 +34,7 @@ async def enqueue(name: str, **kwargs: Any) -> None:
 
 def _register(app: App) -> None:
     from modules.assessment import jobs as assessment_jobs
+    from modules.gapplan import jobs as gapplan_jobs
     from modules.market import jobs as market_jobs
     from modules.profile import jobs as profile_jobs
     from modules.rolemap import jobs as rolemap_jobs
@@ -74,3 +75,7 @@ def _register(app: App) -> None:
     @app.task(name="assessment.compute_fits", queue=str(Queue.AI))
     async def compute_fits(owner_id: str) -> None:
         await assessment_jobs.compute_fits(deps(), owner_id=owner_id)
+
+    @app.task(name="gapplan.draft", queue=str(Queue.AI))
+    async def draft_plan(owner_id: str, plan_id: str) -> None:
+        await gapplan_jobs.draft(deps(), owner_id=owner_id, plan_id=plan_id)

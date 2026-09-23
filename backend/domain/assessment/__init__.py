@@ -12,10 +12,12 @@ from domain.assessment.dimensions import (
     needs_follow_up,
 )
 from domain.assessment.fit import (
+    ClosingLifts,
     FitResult,
     SkillGap,
     TargetScore,
     UncoveredRequirement,
+    closing_lifts,
     evaluate,
 )
 from domain.assessment.matches import (
@@ -32,6 +34,7 @@ __all__ = [
     "MAX_MATCHES",
     "MIN_DIMENSIONS",
     "MIN_MATCHES",
+    "ClosingLifts",
     "DimensionCountError",
     "DimensionScore",
     "FitResult",
@@ -43,6 +46,7 @@ __all__ = [
     "UncoveredRequirement",
     "assert_ids_unique",
     "assert_within_bounds",
+    "closing_lifts",
     "derive_lineage",
     "dropped_ids",
     "evaluate",

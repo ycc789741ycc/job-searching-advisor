@@ -100,6 +100,8 @@ async def test_every_owner_zone_table_actually_has_the_policy(database: Database
         "market_user.private_job_posting",
         "assessment.skill_assessment",
         "rolemap.role",
+        "gapplan.plan",
+        "gapplan.task",
     ],
 )
 async def test_the_crawler_role_cannot_touch_user_data(crawler_engine, table: str) -> None:

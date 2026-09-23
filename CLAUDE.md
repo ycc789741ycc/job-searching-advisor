@@ -121,8 +121,9 @@ backend/
   kernel/     technical kernel, no domain: db, outbox, jobs, auth, crypto, storage,
               ai_gateway, fetch, embeddings
   domain/     the domain model, one package per feature: identity · profile · market ·
-              rolemap · assessment. Pure rules, no I/O, no framework, no kernel.
-  modules/    identity · profile · market · rolemap · assessment
+              rolemap · assessment · target · gapplan. Pure rules, no I/O, no
+              framework, no kernel.
+  modules/    identity · profile · market · rolemap · assessment · target · gapplan
                 public.py   the ONLY importable surface
                 api.py      FastAPI routers
                 infra/      repositories and adapters
@@ -136,7 +137,7 @@ module, as the design guideline requires (its ADR 0002). `modules/<m>` uses only
 `domain/<m>`; another module's rules are reached through that module's
 `public.py`. Domain feature packages never import each other.
 
-Thirteen `import-linter` contracts in `backend/.importlinter` enforce those boundaries, and
+Fifteen `import-linter` contracts in `backend/.importlinter` enforce those boundaries, and
 they run in CI. If one breaks, the design is wrong, not the contract.
 
 ## Things that are deliberate
@@ -174,7 +175,17 @@ In: accounts, GitHub and Jira connectors, résumé upload, LLM configuration,
 market data from ATS boards and pasted JDs, the strength report, the role map,
 and follow-up questions.
 
-Out, and why: `gapplan` (gap plans per target) and `resume` (generation, versions,
-chat, export) are Phase 2/3. The hiring bar is `estimated` only — `InterviewReport`
-arrives with the reporting flow later. Google login is Phase 2, as our own
+## Phase 2 scope
+
+In: the gap plan — plan a route to a Target (a matched opening, a watched role
+or a pasted JD), with gaps ranked by the fit points each is worth, milestones,
+tasks and projects drafted on the user's key, versions per Target with finished
+work carried forward, and plan history. `target` resolves what a plan aims at
+and has no tables (ADR 0005). Drafting is a job whose row the page polls
+(ADR 0006).
+
+Coming in Phase 2: `resume` (generation, versions, chat, export). Not yet:
+suggesting a successor Target when a Role splits — rolemap does not emit
+`RoleSplitOrMerged` yet. The hiring bar is `estimated` only — `InterviewReport`
+arrives with the reporting flow later. Google login is Phase 3, as our own
 OAuth exchange that issues our own session token.

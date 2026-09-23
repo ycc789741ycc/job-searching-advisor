@@ -10,6 +10,8 @@ new record that supersedes the old one.
 | [0002](0002-analyse-only-the-ten-closest-roles.md) | Analyse only the ten roles closest to the user's profile | Superseded by 0003 |
 | [0003](0003-let-the-user-choose-how-many-roles-to-analyse.md) | Let the user choose how many roles to analyse (3–20, default 10) | Accepted |
 | [0004](0004-build-the-spa-on-the-prototypes-design-system.md) | Build the SPA on the prototype's design system and sidebar shell | Accepted |
+| [0005](0005-resolve-targets-in-their-own-module.md) | Resolve Targets in their own module | Accepted |
+| [0006](0006-report-ai-job-progress-through-a-status-the-page-polls.md) | Report AI job progress through a status the page polls | Accepted |
 
 Decisions taken before this directory existed are recorded in the tables of
 `docs/domain_model_review.md` section 6 and `docs/technical_boundaries.md`

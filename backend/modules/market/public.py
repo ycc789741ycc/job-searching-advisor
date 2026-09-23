@@ -107,6 +107,9 @@ class PostingView:
     salary: SalaryRange | None
     # Shared postings only; a pasted JD names its company but has no row there.
     company_id: uuid.UUID | None = None
+    # Which kind of source it was crawled from (atsBoard, jsonLd, publicApi);
+    # None for a pasted JD, which was not crawled at all.
+    source_kind: str | None = None
 
 
 class CrawlIngest:
@@ -401,6 +404,14 @@ class MarketService:
                 select(PrivateJobPosting).where(PrivateJobPosting.owner_id == owner_id)
             )
             return [_private_posting_view(row) for row in rows.scalars()]
+
+    async def private_posting(self, owner_id: uuid.UUID, posting_id: uuid.UUID) -> PostingView:
+        """One pasted JD. Another user's is simply not found: it is behind RLS."""
+        async with self._db.for_user(owner_id) as session:
+            row = await session.get(PrivateJobPosting, posting_id)
+            if row is None or row.owner_id != owner_id:
+                raise NotFoundError("job description not found", posting_id=str(posting_id))
+            return _private_posting_view(row)
 
     async def postings_in_scope(self, owner_id: uuid.UUID) -> list[PostingView]:
         """Every posting this user's role map is built from.
@@ -697,6 +708,7 @@ def _shared_posting_view(posting: JobPosting, company_name: str) -> PostingView:
         visibility=Visibility.SHARED,
         salary=salary,
         company_id=posting.company_id,
+        source_kind=posting.source_kind,
     )
 
 
