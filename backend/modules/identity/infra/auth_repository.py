@@ -6,10 +6,15 @@ import hashlib
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.identity.infra.models import Account, PasswordCredential, RefreshToken
+from modules.identity.infra.models import (
+    Account,
+    FederatedIdentity,
+    PasswordCredential,
+    RefreshToken,
+)
 
 
 def digest(token: str) -> str:
@@ -42,6 +47,35 @@ class AuthRepository:
 
     def add_credential(self, credential: PasswordCredential) -> None:
         self._session.add(credential)
+
+    async def delete_credential_for(self, account_id: uuid.UUID) -> int:
+        result = await self._session.execute(
+            delete(PasswordCredential).where(PasswordCredential.owner_id == account_id)
+        )
+        return int(getattr(result, "rowcount", 0) or 0)
+
+    # -- federated identities ----------------------------------------------
+
+    async def federated_identity(self, provider: str, subject: str) -> FederatedIdentity | None:
+        result = await self._session.execute(
+            select(FederatedIdentity).where(
+                FederatedIdentity.provider == provider, FederatedIdentity.subject == subject
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def federated_identity_for(
+        self, account_id: uuid.UUID, provider: str
+    ) -> FederatedIdentity | None:
+        result = await self._session.execute(
+            select(FederatedIdentity).where(
+                FederatedIdentity.owner_id == account_id, FederatedIdentity.provider == provider
+            )
+        )
+        return result.scalar_one_or_none()
+
+    def add_federated_identity(self, identity: FederatedIdentity) -> None:
+        self._session.add(identity)
 
     # -- refresh tokens -----------------------------------------------------
 

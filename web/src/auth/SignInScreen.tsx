@@ -1,6 +1,8 @@
-import { useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { Button, ErrorNote, Field } from "../components/ui";
 import { useAuth } from "./AuthProvider";
+import { googleStartUrl, signInMethods } from "./session";
+import { readSignInError, withoutSignInError } from "./signInError";
 
 const MIN_PASSWORD_LENGTH = 12;
 
@@ -11,9 +13,35 @@ export function SignInScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // A Google sign-in that did not finish comes back with its reason in the
+  // URL. Read purely here; the effect below removes it.
+  const [error, setError] = useState<string | null>(() =>
+    readSignInError(window.location.search),
+  );
+  const [googleOffered, setGoogleOffered] = useState(false);
 
   const registering = mode === "register";
+
+  useEffect(() => {
+    const { pathname, search } = window.location;
+    if (readSignInError(search) !== null) {
+      window.history.replaceState(
+        null,
+        "",
+        withoutSignInError(pathname, search),
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    signInMethods()
+      .then((methods) => !cancelled && setGoogleOffered(methods.google))
+      .catch(() => !cancelled && setGoogleOffered(false));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -121,6 +149,22 @@ export function SignInScreen() {
             </Button>
           </div>
 
+          {googleOffered && (
+            <div style={{ marginTop: 14 }}>
+              <div
+                className="muted"
+                style={{ fontSize: 12.5, margin: "0 0 8px" }}
+                aria-hidden="true"
+              >
+                or
+              </div>
+              {/* A link, not a fetch: the browser itself goes to Google. */}
+              <a className="btn btn-secondary" href={googleStartUrl()}>
+                Continue with Google
+              </a>
+            </div>
+          )}
+
           {/* Said plainly rather than discovered later. */}
           <p
             className="muted"
@@ -129,6 +173,8 @@ export function SignInScreen() {
             You bring your own AI provider and key after signing in — nothing is
             analysed until you do. There is no password reset yet, and your
             address is not verified. Keep your password somewhere safe.
+            {googleOffered &&
+              " Signing in with Google proves your address: an account with the same address is linked to Google, and any password on it stops working."}
           </p>
         </form>
       </div>

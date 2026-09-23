@@ -162,7 +162,7 @@ The model should include:
 - **Export is presentation:** the template, white background and PDF output are rendering concerns, not domain rules.
 
 ### 2.10 Cross-cutting concerns to keep out of the core
-- **`Account` vs `SourceConnection`**: login and connector OAuth use different tokens, scopes and revoke rules. Keep them as separate models even though both say "OAuth". Sign-in is our own email and password ([ADR 0001](decisions/0001-run-our-own-email-password-sign-in.md)); Google login is Phase 2.
+- **`Account` vs `SourceConnection`**: login and connector OAuth use different tokens, scopes and revoke rules. Keep them as separate models even though both say "OAuth". Sign-in is our own email and password ([ADR 0001](decisions/0001-run-our-own-email-password-sign-in.md)), or Google through our own OpenID Connect exchange ([ADR 0008](decisions/0008-sign-in-with-google-by-our-own-oidc-exchange.md)).
 - **`ProviderCredential` is stored encrypted on the server** (decision 3) and is write-only: set, test, replace, delete; reads show provider, model and the last 4 characters.
 - **Background jobs spend the user's money.** `AIUsageBudget` (monthly cap) and `AIUsageLedger` (per call). A job that would exceed the cap pauses and notifies instead of running.
 - **Keys fail.** On revoke, expiry or rate limit, emit `ProviderCredentialFailed`, pause that user's scheduled jobs and say so.
@@ -182,7 +182,7 @@ The model should include:
 |---|---|---|
 | `intent.md` Background worker | Glassdoor, LinkedIn, Indeed | Not crawled (decision 6). Permitted sources, demand plus baseline (decision 15). |
 | `intent.md` Profile Analysis | The résumé upload bullet was removed | Phase 1 and the prototype keep résumé upload as an Evidence source and revision base. |
-| `intent.md` User Login | Google OAuth or own account | Own account now; Google is Phase 2 (ADR 0001). |
+| `intent.md` User Login | Google OAuth or own account | Both: own account (ADR 0001) and Google (ADR 0008). |
 | prototype `subsNote` | "checked nightly against the URL you gave plus LinkedIn, Glassdoor and Indeed" | Weekly, against the company's supported board; manual when none is found. |
 | prototype `testKey` | "key saved in this browser" | Stored encrypted on the server (decision 3). |
 | prototype `jobFilters` | LinkedIn / Glassdoor / Indeed | Filter by `CrawlSource.kind` or company. |
@@ -310,7 +310,7 @@ flowchart LR
 
 | Term | Definition | Context |
 |---|---|---|
-| Account | A person using the app; signs in with their own email and password (Google in Phase 2) | Identity |
+| Account | A person using the app; signs in with their own email and password, with Google, or both | Identity |
 | ProviderCredential | The user's AI provider, model, base URL and API key; stored encrypted on the server, never readable by the client; the only AI credential in the system | Identity |
 | AIUsageBudget / AIUsageLedger | User-set monthly spending cap for AI on their key, and the per-call record checked against it | Identity |
 | Ingester | The process that turns connector data, uploaded résumés and answers into Evidence, with deterministic rules and no AI | Profile |
@@ -375,7 +375,7 @@ flowchart LR
 | Manual edit; chat with AI to improve | ResumeVersion, RevisionThread |
 | Save / reopen résumés | ResumeVersion |
 | Default white background | Template (rendering, not domain) |
-| **User Login:** Google OAuth or own account | Account (own sign-in now, Google in Phase 2) |
+| **User Login:** Google OAuth or own account | Account, with a PasswordCredential and/or a FederatedIdentity |
 | **AI:** user configures provider and key | ProviderCredential, AIUsageBudget |
 | AI for questions, profile and market analysis, résumé, gap plan | FollowUpQuestion, SkillAssessment, Role clustering, FitEvaluator, GapPlan, RevisionThread — all on the user's key. Ingestion does not use AI (decision 18). |
 

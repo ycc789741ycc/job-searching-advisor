@@ -13,6 +13,7 @@ new record that supersedes the old one.
 | [0005](0005-resolve-targets-in-their-own-module.md) | Resolve Targets in their own module | Accepted |
 | [0006](0006-report-ai-job-progress-through-a-status-the-page-polls.md) | Report AI job progress through a status the page polls | Accepted |
 | [0007](0007-render-resume-pdfs-with-weasyprint.md) | Render résumé PDFs with WeasyPrint, not a headless browser | Accepted |
+| [0008](0008-sign-in-with-google-by-our-own-oidc-exchange.md) | Sign in with Google through our own OpenID Connect exchange, and let a verified address take over an unverified one | Accepted |
 
 Decisions taken before this directory existed are recorded in the tables of
 `docs/domain_model_review.md` section 6 and `docs/technical_boundaries.md`

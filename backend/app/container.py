@@ -11,19 +11,29 @@ from decimal import Decimal
 from functools import lru_cache
 
 from kernel.ai_gateway import AiGateway
-from kernel.auth import ALGORITHM, StaticSecretResolver, TokenVerifier
+from kernel.auth import ALGORITHM, JwksResolver, StaticSecretResolver, TokenVerifier
 from kernel.config import Settings, Unit, get_settings, must
 from kernel.db import Database
 from kernel.storage import ObjectStore
 from modules.assessment.public import AssessmentService
 from modules.gapplan.public import GapPlanService
-from modules.identity.public import AuthService, IdentityService
+from modules.identity.public import (
+    AuthService,
+    GoogleEndpoints,
+    GoogleOidc,
+    GoogleSignIn,
+    IdentityService,
+)
 from modules.market.public import CrawlIngest, MarketService
 from modules.profile.infra.connectors import GitHubConnector, JiraConnector
 from modules.profile.public import ProfileService
 from modules.resume.public import ResumeService
 from modules.rolemap.public import RoleMapService
 from modules.target.public import TargetService
+
+# Google rotates its signing keys over days; an hour keeps the fetch rare while
+# a newly published key is still picked up well before it is used.
+_GOOGLE_KEYS_CACHE_SECONDS = 3600
 
 
 @dataclass
@@ -41,6 +51,7 @@ class Container:
     resume: ResumeService
     object_store: ObjectStore
     _verifier: TokenVerifier | None = None
+    _google: GoogleSignIn | None = None
 
     @property
     def verifier(self) -> TokenVerifier:
@@ -58,6 +69,40 @@ class Container:
                 algorithms=(ALGORITHM,),
             )
         return self._verifier
+
+    @property
+    def google_sign_in(self) -> GoogleSignIn | None:
+        """Google sign-in, or None when it is not configured.
+
+        Built on first use, like the verifier: only `api` signs anyone in.
+        """
+        settings = self.settings
+        if not settings.google_sign_in_enabled:
+            return None
+        if self._google is None:
+            api_base = must(settings.auth_public_api_base_url, "AUTH_PUBLIC_API_BASE_URL")
+            endpoints = GoogleEndpoints(
+                authorize_url=must(
+                    settings.google_oauth_authorize_url, "GOOGLE_OAUTH_AUTHORIZE_URL"
+                ),
+                token_url=must(settings.google_oauth_token_url, "GOOGLE_OAUTH_TOKEN_URL"),
+                client_id=must(settings.google_oauth_client_id, "GOOGLE_OAUTH_CLIENT_ID"),
+                client_secret=must(
+                    settings.google_oauth_client_secret, "GOOGLE_OAUTH_CLIENT_SECRET"
+                ).get_secret_value(),
+                redirect_uri=f"{api_base.rstrip('/')}/api/v1/auth/google/callback",
+            )
+            provider = GoogleOidc(
+                endpoints,
+                keys=JwksResolver(
+                    must(settings.google_oauth_jwks_url, "GOOGLE_OAUTH_JWKS_URL"),
+                    cache_seconds=_GOOGLE_KEYS_CACHE_SECONDS,
+                ),
+                timeout_seconds=settings.crawl_http_timeout_seconds,
+                user_agent=settings.service_name,
+            )
+            self._google = GoogleSignIn(self.auth, provider, secret=settings.require_auth_secret())
+        return self._google
 
     async def aclose(self) -> None:
         await self.database.dispose()

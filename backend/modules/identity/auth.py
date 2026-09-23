@@ -1,7 +1,10 @@
 """Registration, sign-in and session refresh.
 
 We run our own sign-in, so this module owns the whole flow: hashing, lockout,
-token issuance and refresh rotation.
+token issuance and refresh rotation. Signing in with Google ends here too: the
+Google exchange (``modules.identity.google``) proves who someone is, and
+``sign_in_with_google`` decides which account that is and issues *our* session
+(ADR 0008).
 
 Two things it deliberately does not do, because both need email delivery and
 that is still an open question in docs/technical_boundaries.md section 8:
@@ -20,6 +23,9 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from domain.identity import (
+    AccountAction,
+    FederatedProvider,
+    IdTokenClaims,
     LockoutState,
     RefreshRejectedError,
     RefreshTokenState,
@@ -29,6 +35,7 @@ from domain.identity import (
     new_refresh_token,
     normalize_email,
     refresh_token_expiry,
+    resolve_federated_account,
 )
 from kernel.auth import issue_access_token
 from kernel.db import Database
@@ -39,6 +46,7 @@ from modules.identity.infra.auth_repository import AuthRepository, digest
 from modules.identity.infra.models import (
     Account,
     AiUsageBudget,
+    FederatedIdentity,
     PasswordCredential,
     RefreshToken,
 )
@@ -200,6 +208,87 @@ class AuthService:
         assert outcome.account_id is not None
         log.info("auth.signed_in", account_id=str(outcome.account_id))
         return await self._start_session(outcome.account_id, address, now=now)
+
+    # -- sign in with Google ------------------------------------------------
+
+    async def sign_in_with_google(self, claims: IdTokenClaims) -> Session:
+        """Sign in the account a verified Google identity belongs to.
+
+        ``claims`` must already have passed ``assert_acceptable_claims``: the
+        address is one Google has verified. That is what lets a matching
+        password account be linked — and why its password is removed, since
+        our own addresses never were verified (ADR 0008).
+        """
+        provider = str(FederatedProvider.GOOGLE)
+        address = normalize_email(claims.email)
+        now = utcnow()
+        created = False
+
+        # Like registration, this runs before there is an app.user_id. The
+        # authentication tables' policies allow exactly that.
+        async with self._db.shared() as session:
+            repo = AuthRepository(session)
+            linked = await repo.federated_identity(provider, claims.subject)
+            by_email = await repo.account_by_email(address) if linked is None else None
+            resolution = resolve_federated_account(
+                linked_account_id=linked.account_id if linked is not None else None,
+                email_account_id=by_email.id if by_email is not None else None,
+                email_account_has_password=(
+                    by_email is not None and await repo.credential_for(by_email.id) is not None
+                ),
+                email_account_has_same_provider=(
+                    by_email is not None
+                    and await repo.federated_identity_for(by_email.id, provider) is not None
+                ),
+            )
+
+            if resolution.action is AccountAction.CREATE:
+                account = Account(email=address, auth_subject=None)
+                session.add(account)
+                await session.flush()
+                account_id = account.id
+                created = True
+            else:
+                assert resolution.account_id is not None
+                account_id = resolution.account_id
+
+            if resolution.action is not AccountAction.SIGN_IN:
+                repo.add_federated_identity(
+                    FederatedIdentity(
+                        owner_id=account_id,
+                        account_id=account_id,
+                        provider=provider,
+                        subject=claims.subject,
+                        email_at_link=address,
+                    )
+                )
+
+            if resolution.remove_password:
+                # Whoever registered this address before its owner proved it
+                # loses the password and every session it opened.
+                await repo.delete_credential_for(account_id)
+                revoked = await repo.revoke_all_for(account_id, at=now)
+                log.warning(
+                    "auth.google_linked",
+                    account_id=str(account_id),
+                    password_removed=True,
+                    sessions_revoked=revoked,
+                )
+            elif resolution.action is AccountAction.LINK:
+                log.info("auth.google_linked", account_id=str(account_id), password_removed=False)
+
+            email = address
+            if linked is not None:
+                existing = await session.get(Account, account_id)
+                email = existing.email if existing is not None else address
+
+        if created:
+            async with self._db.for_user(account_id) as session:
+                session.add(AiUsageBudget(owner_id=account_id, monthly_cap_usd=self._default_cap))
+            log.info("auth.registered", account_id=str(account_id), method=provider)
+
+        log.info("auth.signed_in", account_id=str(account_id), method=provider)
+        return await self._start_session(account_id, email, now=now)
 
     # -- refresh ------------------------------------------------------------
 
