@@ -90,7 +90,7 @@ host.
 
 Supporting targets, never dependencies of the above: `migrate`, `format`,
 `gen-client`, `lock` (regenerates `backend/uv.lock` after a dependency change),
-`logs`, and `reset-data` (the only destructive one).
+`logs`, and `clean-up-infra` (the only destructive one).
 
 - `format` and `lock` write to source, so they run through `compose.dev.yaml`,
   where the mounts live. They need the dev images (`make build-app MODE=dev`),

@@ -65,7 +65,7 @@ endif
 
 .PHONY: help require-env check-mode require-mode-images build-infra build-app \
         start-infra start-app stop-app stop-infra test-unit test-integration \
-        migrate lint typecheck scan format gen-client lock reset-data logs
+        migrate lint typecheck scan format gen-client lock clean-up-infra logs
 
 help:
 	@echo "Standard targets (build-app, start-app, stop-app take MODE=dev|prod):"
@@ -74,7 +74,7 @@ help:
 	@echo "Gates (their own targets, never folded into a test target):"
 	@echo "  lint typecheck scan"
 	@echo "Supporting targets (never dependencies of the above):"
-	@echo "  migrate format gen-client lock logs reset-data"
+	@echo "  migrate format gen-client lock logs clean-up-infra"
 
 require-env:
 	@test -f $(ENV_FILE) || { \
@@ -127,7 +127,7 @@ start-app: require-env require-mode-images migrate
 stop-app: require-env check-mode
 	$(COMPOSE_BASE) down --remove-orphans
 
-# Preserves data on purpose. Use `make reset-data` to discard volumes.
+# Preserves data on purpose. Use `make clean-up-infra` to discard volumes.
 stop-infra: require-env
 	$(COMPOSE_INFRA) stop
 
@@ -222,7 +222,7 @@ lock: require-env
 	$(COMPOSE_DEV) run --rm backend-tools uv lock
 
 # DESTRUCTIVE. Never a dependency of a build, start, stop or test target.
-reset-data: require-env
+clean-up-infra: require-env
 	@read -p "This deletes all local infra volumes. Type 'yes' to continue: " ok; \
 	 [ "$$ok" = "yes" ] || { echo "aborted"; exit 1; }
 	$(COMPOSE_BASE) down --remove-orphans
