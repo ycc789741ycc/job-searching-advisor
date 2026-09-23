@@ -23,6 +23,7 @@ import {
   PillToggle,
   StatTile,
 } from "../components/ui";
+import { useShell } from "../shell/ShellContext";
 import { useToast } from "../shell/toast";
 import { CostConfirm } from "./CostConfirm";
 import { messageOf, useAsync } from "./useAsync";
@@ -35,6 +36,7 @@ const MAX_ROLE_COUNT = 20;
 /** The role map: which roles exist in this user's market, and how they fit. */
 export function Roles() {
   const flash = useToast();
+  const { navigate } = useShell();
   const roles = useAsync<Role[]>(() => api.get("/roles"), []);
   const settings = useAsync<RoleMapSettings>(
     () => api.get("/roles/settings"),
@@ -318,6 +320,14 @@ export function Roles() {
                   </ul>
                 </>
               )}
+
+              <div className="panel-actions">
+                <Button
+                  onClick={() => navigate("plan", { roleId: activeRole.id })}
+                >
+                  Draft the plan with AI
+                </Button>
+              </div>
 
               <details style={{ marginTop: 16 }}>
                 <summary

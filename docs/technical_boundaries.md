@@ -68,9 +68,9 @@ backend/
   kernel/                   # shared technical kernel, no domain logic
     db/ outbox/ jobs/ auth/ crypto/ storage/ ai_gateway/ fetch/ embeddings/
   domain/                   # the domain model: entities and rules; pure Python, no I/O
-    identity/  profile/  market/  rolemap/  assessment/  gapplan/  resume/
+    identity/  profile/  market/  rolemap/  assessment/  target/  gapplan/  resume/
   modules/
-    identity/  profile/  market/  rolemap/  assessment/  gapplan/  resume/
+    identity/  profile/  market/  rolemap/  assessment/  target/  gapplan/  resume/
       public.py             # the ONLY importable surface: service interface, DTOs, event types
       api.py                # FastAPI routers
       infra/                # repositories, external adapters
@@ -83,7 +83,7 @@ web/                        # TS client
 >
 > The domain model is one top-level `domain/` folder with a package per feature, not a `domain/` inside each module. That is the design guideline's rule (its ADR 0002): the layer boundary is visible, and can be checked, against one path. The cost it names applies here too: one feature now spans `domain/<m>/` and `modules/<m>/`. Before 2026-09-22 each module had its own `domain/`, so ADRs 0002 and 0003 still cite `modules/rolemap/domain/selection.py`, which is now `domain/rolemap/selection.py`.
 >
-> `gapplan` and `resume` are Phase 2/3 and not built yet. `gapplan` replaces the earlier `growth`: with no CareerGoal (domain decision 16), the module is about plans for a Target and nothing else.
+> `gapplan` replaces the earlier `growth`: with no CareerGoal (domain decision 16), the module is about plans for a Target and nothing else. The Target itself has its own feature package and module, `target`, because both `gapplan` and `resume` aim at one and rules 7 and 8 forbid either from owning it ([ADR 0005](decisions/0005-resolve-targets-in-their-own-module.md)). `target` has no tables: it resolves a Target through other modules' `public.py` and hands back a frozen snapshot that the plan or résumé stores. `resume` is Phase 2 and not built yet.
 
 ### Rules (enforced in CI with `import-linter` contracts)
 1. A module imports another module **only** through its `public.py`.
@@ -106,7 +106,8 @@ web/                        # TS client
 | `PostingsChanged(markets, companies)` | crawler (via market) | dispatcher resolves affected users → rolemap.recluster per user. A baseline-only change reaches every user whose scope includes that market. |
 | `RoleCountChanged(k)` | rolemap | rolemap.recluster for that user, after the cost estimate is confirmed |
 | `SubscriptionAdded(company, url)` | market | worker materialises a `market.crawl_source` from the URL with no user id → single-company crawl |
-| `RoleRequirementsChanged`, `RoleSplitOrMerged` | rolemap | assessment.compute_fits, gapplan.suggest_successor (for Targets whose snapshot came from that Role) |
+| `RoleRequirementsChanged`, `RoleSplitOrMerged` | rolemap | assessment.compute_fits; later gapplan.suggest_successor (for Targets whose snapshot came from that Role — not built: rolemap does not emit `RoleSplitOrMerged` yet) |
+| `PlanDrafted` | gapplan | nothing yet; recorded for the match digest and progress history |
 | `InterviewReported` | profile | market.record_contribution, profile.add_evidence, assessment.calibrate_fit |
 | `ProviderCredentialFailed`, `UsageBudgetExceeded` | kernel.ai_gateway | identity.pause_background_jobs, notify |
 
@@ -122,6 +123,7 @@ web/                        # TS client
 | Market (shared data) | `market` | `market` (shared) and `market_user` (owner zone; see §3) |
 | Role map (per user) | `rolemap` | `rolemap` |
 | Assessment | `assessment` | `assessment` |
+| Gap plan (Target) | `target` | none: resolves through other modules, and the snapshot is stored by its consumer |
 | Gap plan | `gapplan` | `gapplan` |
 | Resume | `resume` | `resume` |
 
@@ -146,7 +148,8 @@ web/                        # TS client
 | RoleSubscription, MarketPreference | `market_user.company_subscription`, `market_user.market_preference` | User-owned. The subscription table keeps its name and gains `role_title`, a nullable `role_id` and a nullable `url` (domain decision 19); renaming it would mean rewriting the fan-out RLS policy for no gain. The worker copies the needed companies, URLs and markets into `market.crawl_source` **without user ids**, so the crawler can't tell who asked for them. |
 | Baseline sources (domain decision 15) | `market.crawl_source` with `origin = 'baseline'` | A versioned seed owned by `modules.market`, loaded by `make migrate`. It is data reviewed like code, not environment configuration. Demand rows have `origin = 'demand'`. Neither carries a user id. |
 | Role count k (domain decision 17) | `rolemap.role_map_setting` | Owner zone, one row per user; the bound is enforced in the `rolemap` domain rule and the API schema (ADR 0003). |
-| GapPlan, Milestone, Task | `gapplan.*` | Owner zone. A plan row holds the Target as `target_kind` plus one of `job_posting_id`, `subscription_id` or `private_posting_id`, and the frozen requirements snapshot, so a plan survives posting expiry and re-clustering. |
+| GapPlan, Milestone, Task | `gapplan.plan`, `gapplan.milestone`, `gapplan.task` | Owner zone. A plan row holds the Target as `target_kind` plus one of `job_posting_id`, `subscription_id` or `private_posting_id`, and the frozen requirements snapshot, so a plan survives posting expiry and re-clustering. Regenerating adds a row with the next `version`; finished tasks carry over by matching. Each row has a `status` (`drafting`, `ready`, `failed`) and the failure's code ([ADR 0006](decisions/0006-report-ai-job-progress-through-a-status-the-page-polls.md)). |
+| What a fit was projected from | `assessment.role_fit.requirements`, `requirement_map` | The requirements and which of the user's dimensions each mapped to, so a Target snapshot and requirement coverage can be read without the role or posting. A fit may now be for a pasted JD (`private_posting_id`). |
 | Pasted JDs (decision 12) | `market_user.private_job_posting` | The crawler role and shared queries physically can't reach them. An optional `shared_posting_id` gives a one-way link to a matching crawled posting. |
 | InterviewReport, private part (outcome, stage notes) | `profile.interview_outcome` | Owner only; becomes Evidence and calibrates fit |
 | InterviewReport, shared part (company, title, stages, difficulty) | `market.interview_contribution` with salted `contributor_hash` | Allows one vote per user with no link back to the account |
@@ -207,7 +210,7 @@ flowchart LR
 
 - **Prompt templates** are versioned files. Each snapshot (SkillAssessment, RoleFit, GapPlan, ResumeVersion) stores the model id and template version.
 - **First-run cost confirmation** comes from the same estimate step, run in dry-run mode. The role-map estimate is capped at the user's k, and raising k asks for confirmation again (ADR 0003).
-- **Callers:** `assessment` (analysis, follow-up questions, fit), `rolemap` (naming, requirements, difficulty), and later `gapplan` and `resume`. Never `profile`: ingestion is outside the gateway (rule 6).
+- **Callers:** `assessment` (analysis, follow-up questions, fit, reading a pasted JD's requirements), `rolemap` (naming, requirements, difficulty), `gapplan` (drafting), and later `resume`. Never `profile`: ingestion is outside the gateway (rule 6).
 - **Local ML is outside the gateway.** sentence-transformers and HDBSCAN run in `crawler` (posting embeddings, dedup) and in `worker` (per-user clustering over the embeddings of that user's market postings). The gateway on the user's key only **names clusters and extracts requirements**. Rule: *generative AI is paid by the user; plain computation is paid by the platform* (domain decision 7).
 
 ## 6. Schedules and flows across units
@@ -221,10 +224,10 @@ flowchart LR
 | Weekly cron, after crawl | worker (`notify`) | send `MatchDigest`; send interview-report prompts about 2 weeks after tailoring |
 | Weekly cron | worker | re-check `manual` subscriptions for a supported board; refresh `crawl_source` from `market_user` |
 | User subscribes / clicks refresh | api → crawler | single-company crawl, rate-limited per user per day |
-| User clicks "Analyze" | api → worker (`ai`) | cost estimate → user confirms → assessment → follow-up questions or fits; SPA tracks job status over SSE |
+| User clicks "Analyze" | api → worker (`ai`) | cost estimate → user confirms → assessment → follow-up questions or fits; the SPA re-reads the result |
 | Connector authorized / weekly | worker (`sync`) | fetch → Evidence → `ProfileUpdated` |
 | Résumé uploaded | api → worker (`sync`) | store file → parse → Evidence and base résumé |
-| User picks a Target and generates a plan | api → worker (`ai`) | snapshot the Target's requirements → gaps → draft GapPlan → new version in plan history |
+| User picks a Target and generates a plan | api → worker (`ai`) | cost estimate → user confirms → plan row `drafting` → worker snapshots the Target (a pasted JD is read and scored first) → gaps ranked by fit points → draft → validate → `ready` or `failed` with a code; the SPA polls the row (ADR 0006) |
 | User reopens a plan | api | read the GapPlan version; no AI |
 | User picks a résumé Target | api → worker (`ai`) | RequirementCoverage from RoleFit → first ResumeVersion, every bullet citing Evidence |
 | Résumé chat | api | `ai_gateway.stream` over SSE; each accepted edit saves a ResumeVersion |
@@ -247,6 +250,8 @@ flowchart LR
 | T11 | The role map's k is a per-user setting in `rolemap`, bounded, with the cost estimate capped at k ([ADR 0003](decisions/0003-let-the-user-choose-how-many-roles-to-analyse.md), superseding [ADR 0002](decisions/0002-analyse-only-the-ten-closest-roles.md)) |
 | T12 | Ingestion never reaches the AI gateway: `profile` may not import `kernel.ai_gateway`, enforced by `import-linter` |
 | T13 | Gap plans are keyed by Target (kind plus reference plus frozen requirements snapshot) in the `gapplan` module; the earlier `growth` module is not built |
+| T14 | Targets are resolved by their own table-less `target` module ([ADR 0005](decisions/0005-resolve-targets-in-their-own-module.md)) |
+| T15 | A job-produced result exists from the request, with a status the SPA polls; SSE is kept for the résumé chat ([ADR 0006](decisions/0006-report-ai-job-progress-through-a-status-the-page-polls.md)) |
 
 ### Coverage of domain decisions
 
@@ -265,7 +270,7 @@ flowchart LR
 | 13 Manual fallback for uncrawlable companies | Weekly re-check job; `coverage` column in `market_user` |
 | 14 Weekly crawl | §6 weekly cron chain; `MatchDigest` |
 | 15 Baseline crawl | T10 |
-| 16 GapPlan per Target | T13: `gapplan` schema |
+| 16 GapPlan per Target | T13, T14: `gapplan` schema, `target` module |
 | 17 User-chosen k | T11: `rolemap.role_map_setting`, `RoleCountChanged` |
 | 18 Ingestion AI-free | T12: rule 6 |
 | 19 Role subscriptions with URL | `market_user.company_subscription` gains role and URL columns; SSRF-guarded crawl of the URL |

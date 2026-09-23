@@ -10,8 +10,9 @@ model and the prompt template that produced it.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -21,12 +22,15 @@ from domain.assessment import (
     DEFAULT_MATCHES,
     MAX_DIMENSIONS,
     MIN_DIMENSIONS,
+    ClosingLifts,
     DimensionCountError,
     MatchCandidate,
+    SkillGap,
     TargetScore,
     UncoveredRequirement,
     assert_ids_unique,
     assert_within_bounds,
+    closing_lifts,
     derive_lineage,
     dropped_ids,
     evaluate,
@@ -52,9 +56,9 @@ from modules.assessment.infra.models import (
     SkillAssessment,
     SkillDimension,
 )
-from modules.market.public import MarketService, SalaryRange, Visibility
+from modules.market.public import MarketService, PostingView, SalaryRange, Visibility
 from modules.profile.public import CitationError, ProfileService, assert_citations_exist
-from modules.rolemap.public import RoleMapService, RoleView
+from modules.rolemap.public import RequirementView, RoleMapService, RoleView
 
 __all__ = [
     "AssessmentService",
@@ -104,6 +108,16 @@ class _Mapping(BaseModel):
 class _Target(BaseModel):
     dimension_id: str
     target: int = Field(ge=0, le=100)
+
+
+class _PostingRequirement(BaseModel):
+    statement: str = Field(min_length=1, max_length=400)
+    weight: float = Field(ge=0.0, le=1.0)
+    expected_level: str = Field(pattern="^(familiar|proficient|advanced|expert)$")
+
+
+class _PostingRequirements(BaseModel):
+    requirements: list[_PostingRequirement] = Field(min_length=3, max_length=12)
 
 
 class _Projection(BaseModel):
@@ -156,6 +170,21 @@ class FitView:
     uncovered: tuple[dict[str, Any], ...]
     model_id: str
     created_at: datetime
+    assessment_id: uuid.UUID | None = None
+    target_profile: dict[str, int] = field(default_factory=dict)
+    # What the fit was projected from; empty for fits taken before these were
+    # recorded.
+    requirements: tuple[RequirementView, ...] = ()
+    requirement_map: dict[str, str | None] = field(default_factory=dict)
+
+    def lifts(self) -> ClosingLifts:
+        """Fit points each gap is worth, by the fit's own arithmetic."""
+        return closing_lifts(
+            gaps=[
+                SkillGap(g["dimension_key"], g["user_score"], g["target_score"]) for g in self.gaps
+            ],
+            uncovered=[UncoveredRequirement(u["statement"], u["weight"]) for u in self.uncovered],
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +201,9 @@ class MatchedPostingView:
     salary: SalaryRange | None
     fit: int | None
     subscription_id: uuid.UUID | None
+    # The crawl source kind (atsBoard, jsonLd, publicApi); never a site that
+    # forbids crawling (domain decision 6).
+    source_kind: str | None = None
 
 
 class AssessmentService:
@@ -383,53 +415,15 @@ class AssessmentService:
         if not roles:
             return []
 
-        template = load_template("fit_projection", "v1")
-        dimensions_block = "\n".join(
-            f"- {d.key}: {d.name} — scored {d.score}/100 (confidence {d.confidence:.2f})"
-            for d in assessment.dimensions
-        )
-        user_scores = {d.key: d.score for d in assessment.dimensions}
-        known_keys = set(user_scores)
-
         for role in roles:
             if not role.requirements:
                 continue
-            requirements_block = "\n".join(
-                f"- {r.statement} (weight {r.weight}, expects {r.expected_level})"
-                for r in role.requirements
-            )
-            projection = await self._gateway.run(
+            await self._project(
                 owner_id,
-                task="assessment.fit",
-                template=template,
-                inputs={
-                    "dimensions": dimensions_block,
-                    "role_name": role.name,
-                    "requirements": requirements_block,
-                },
-                output_schema=_Projection,
-                untrusted=frozenset({"requirements"}),
-            )
-
-            targets = [
-                TargetScore(dimension_id=t.dimension_id, target=t.target)
-                for t in projection.value.target_scores
-                # A target for a dimension this user does not have is the
-                # model drifting, not a new axis.
-                if t.dimension_id in known_keys
-            ]
-            uncovered = _uncovered_from(projection.value, role, known_keys)
-            fit = evaluate(user_scores=user_scores, targets=targets, uncovered=uncovered)
-
-            await self._store_fit(
-                owner_id,
-                assessment_id=assessment.id,
+                assessment,
+                name=role.name,
+                requirements=role.requirements,
                 role_id=role.id,
-                fit=fit,
-                targets=targets,
-                reasoning=projection.value.reasoning,
-                model_id=projection.model_id,
-                template_version=projection.template_version,
             )
 
         async with self._db.for_user(owner_id) as session:
@@ -456,19 +450,139 @@ class AssessmentService:
                 if target in seen:
                     continue
                 seen.add(target)
-                latest.append(
-                    FitView(
-                        role_id=row.role_id,
-                        private_posting_id=row.private_posting_id,
-                        score=row.score,
-                        reasoning=row.reasoning,
-                        gaps=tuple(row.gaps),
-                        uncovered=tuple(row.uncovered),
-                        model_id=row.model_id,
-                        created_at=row.created_at,
-                    )
-                )
+                latest.append(_fit_view(row))
             return latest
+
+    async def fit_for_private_posting(self, owner_id: uuid.UUID, posting_id: uuid.UUID) -> FitView:
+        """Fit against a JD the user pasted, reading its requirements first.
+
+        A pasted JD has no Role, so its requirements are read from its own text
+        (on the user's key), then projected onto the user's dimensions like any
+        role's. A fit already taken against the current analysis is reused, so
+        planning and writing for the same JD pay for this once.
+        """
+        assessment = await self.latest(owner_id)
+        if assessment is None:
+            raise ValidationError("run an analysis before scoring a job description")
+        for fit in await self.fits(owner_id):
+            if fit.private_posting_id == posting_id and fit.assessment_id == assessment.id:
+                return fit
+
+        posting = await self._market.private_posting(owner_id, posting_id)
+        extraction = await self._gateway.run(
+            owner_id,
+            task="assessment.posting_requirements",
+            template=load_template("posting_requirements", "v1"),
+            inputs=_posting_inputs(posting),
+            output_schema=_PostingRequirements,
+            untrusted=frozenset({"posting"}),
+        )
+        requirements = tuple(
+            RequirementView(r.statement, r.weight, r.expected_level)
+            for r in extraction.value.requirements
+        )
+        await self._project(
+            owner_id,
+            assessment,
+            name=f"{posting.title} at {posting.company_name}",
+            requirements=requirements,
+            private_posting_id=posting_id,
+        )
+        for fit in await self.fits(owner_id):
+            if fit.private_posting_id == posting_id:
+                return fit
+        raise NotFoundError("the fit disappeared immediately after being written")
+
+    async def estimate_private_fit(self, owner_id: uuid.UUID, posting_id: uuid.UUID) -> Decimal:
+        """What scoring a pasted JD would cost; nothing when it is already scored."""
+        assessment = await self.latest(owner_id)
+        if assessment is None:
+            raise ValidationError("run an analysis before scoring a job description")
+        for fit in await self.fits(owner_id):
+            if fit.private_posting_id == posting_id and fit.assessment_id == assessment.id:
+                return Decimal(0)
+        posting = await self._market.private_posting(owner_id, posting_id)
+        extraction = await self._gateway.estimate(
+            owner_id,
+            task="assessment.posting_requirements",
+            template=load_template("posting_requirements", "v1"),
+            inputs=_posting_inputs(posting),
+            untrusted=frozenset({"posting"}),
+        )
+        # The projection's requirements are not known yet; the posting's own
+        # text stands in for them, which over- rather than under-estimates.
+        projection = await self._gateway.estimate(
+            owner_id,
+            task="assessment.fit",
+            template=load_template("fit_projection", "v1"),
+            inputs={
+                "dimensions": _dimensions_block(assessment),
+                "role_name": posting.title,
+                "requirements": posting.description,
+            },
+            untrusted=frozenset({"requirements"}),
+        )
+        return extraction.cost_usd + projection.cost_usd
+
+    async def _project(
+        self,
+        owner_id: uuid.UUID,
+        assessment: AssessmentView,
+        *,
+        name: str,
+        requirements: tuple[RequirementView, ...],
+        role_id: uuid.UUID | None = None,
+        private_posting_id: uuid.UUID | None = None,
+    ) -> None:
+        """Map requirements onto this user's dimensions, and store the fit."""
+        user_scores = {d.key: d.score for d in assessment.dimensions}
+        known_keys = set(user_scores)
+        projection = await self._gateway.run(
+            owner_id,
+            task="assessment.fit",
+            template=load_template("fit_projection", "v1"),
+            inputs={
+                "dimensions": _dimensions_block(assessment),
+                "role_name": name,
+                "requirements": "\n".join(
+                    f"- {r.statement} (weight {r.weight}, expects {r.expected_level})"
+                    for r in requirements
+                ),
+            },
+            output_schema=_Projection,
+            untrusted=frozenset({"requirements"}),
+        )
+
+        targets = [
+            TargetScore(dimension_id=t.dimension_id, target=t.target)
+            for t in projection.value.target_scores
+            # A target for a dimension this user does not have is the model
+            # drifting, not a new axis.
+            if t.dimension_id in known_keys
+        ]
+        uncovered = _uncovered_from(projection.value, requirements, known_keys)
+        fit = evaluate(user_scores=user_scores, targets=targets, uncovered=uncovered)
+        statements = {r.statement for r in requirements}
+        requirement_map: dict[str, str | None] = {statement: None for statement in statements}
+        for mapping in projection.value.mappings:
+            if mapping.requirement_statement in statements:
+                requirement_map[mapping.requirement_statement] = (
+                    mapping.dimension_id if mapping.dimension_id in known_keys else None
+                )
+
+        await self._store_fit(
+            owner_id,
+            assessment_id=assessment.id,
+            role_id=role_id,
+            private_posting_id=private_posting_id,
+            fit=fit,
+            targets=targets,
+            requirements=requirements,
+            requirement_map=requirement_map,
+            reasoning=projection.value.reasoning,
+            model_id=projection.model_id,
+            template_version=projection.template_version,
+        )
 
     async def matched_postings(
         self, owner_id: uuid.UUID, *, limit: int = DEFAULT_MATCHES
@@ -529,6 +643,7 @@ class AssessmentService:
                     salary=posting.salary,
                     fit=candidate.fit,
                     subscription_id=watching,
+                    source_kind=posting.source_kind,
                 )
             )
         return matched
@@ -700,19 +815,34 @@ class AssessmentService:
         owner_id: uuid.UUID,
         *,
         assessment_id: uuid.UUID,
-        role_id: uuid.UUID,
+        role_id: uuid.UUID | None,
+        private_posting_id: uuid.UUID | None,
         fit: Any,
         targets: list[TargetScore],
+        requirements: tuple[RequirementView, ...],
+        requirement_map: dict[str, str | None],
         reasoning: str,
         model_id: str,
         template_version: str,
     ) -> None:
+        if (role_id is None) == (private_posting_id is None):
+            raise ValidationError("a fit is for exactly one role or one posting")
         async with self._db.for_user(owner_id) as session:
             session.add(
                 RoleFit(
                     owner_id=owner_id,
                     assessment_id=assessment_id,
                     role_id=role_id,
+                    private_posting_id=private_posting_id,
+                    requirements=[
+                        {
+                            "statement": r.statement,
+                            "weight": r.weight,
+                            "expected_level": r.expected_level,
+                        }
+                        for r in requirements
+                    ],
+                    requirement_map=requirement_map,
                     score=fit.score,
                     reasoning=reasoning,
                     target_profile={t.dimension_id: t.target for t in targets},
@@ -796,13 +926,13 @@ def _evidence_block(snapshot: Any) -> str:
 
 
 def _uncovered_from(
-    projection: _Projection, role: RoleView, known_keys: set[str]
+    projection: _Projection, requirements: tuple[RequirementView, ...], known_keys: set[str]
 ) -> list[UncoveredRequirement]:
     """Requirements that map to no dimension of this user's.
 
     Never dropped: no evidence at all is a different thing from a low score.
     """
-    weights = {r.statement: r.weight for r in role.requirements}
+    weights = {r.statement: r.weight for r in requirements}
     uncovered: list[UncoveredRequirement] = []
     mapped = {m.requirement_statement for m in projection.mappings if m.dimension_id in known_keys}
     for statement, weight in weights.items():
@@ -813,3 +943,39 @@ def _uncovered_from(
 
 def _never() -> AssessmentView:
     raise NotFoundError("the assessment disappeared immediately after being written")
+
+
+def _dimensions_block(assessment: AssessmentView) -> str:
+    return "\n".join(
+        f"- {d.key}: {d.name} — scored {d.score}/100 (confidence {d.confidence:.2f})"
+        for d in assessment.dimensions
+    )
+
+
+def _posting_inputs(posting: PostingView) -> dict[str, str]:
+    return {
+        "posting": (
+            f"Title: {posting.title}\nCompany: {posting.company_name}\n"
+            f"Location: {posting.location or 'not given'}\n\n{posting.description}"
+        )
+    }
+
+
+def _fit_view(row: RoleFit) -> FitView:
+    return FitView(
+        role_id=row.role_id,
+        private_posting_id=row.private_posting_id,
+        score=row.score,
+        reasoning=row.reasoning,
+        gaps=tuple(row.gaps),
+        uncovered=tuple(row.uncovered),
+        model_id=row.model_id,
+        created_at=row.created_at,
+        assessment_id=row.assessment_id,
+        target_profile=dict(row.target_profile),
+        requirements=tuple(
+            RequirementView(r["statement"], r["weight"], r["expected_level"])
+            for r in row.requirements or []
+        ),
+        requirement_map=dict(row.requirement_map or {}),
+    )

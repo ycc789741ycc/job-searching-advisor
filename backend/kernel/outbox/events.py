@@ -32,6 +32,8 @@ class EventName(StrEnum):
     ROLE_REQUIREMENTS_CHANGED = "RoleRequirementsChanged"
     ROLE_SPLIT_OR_MERGED = "RoleSplitOrMerged"
     ROLE_COUNT_CHANGED = "RoleCountChanged"
+    # Gap plan
+    PLAN_DRAFTED = "PlanDrafted"
     # Identity / AI
     ANALYSIS_COST_ESTIMATED = "AnalysisCostEstimated"
     ANALYSIS_COST_CONFIRMED = "AnalysisCostConfirmed"

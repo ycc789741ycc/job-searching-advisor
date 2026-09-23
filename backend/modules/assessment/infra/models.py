@@ -21,6 +21,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -150,6 +151,15 @@ class RoleFit(Base, OwnedMixin):
     target_profile: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     gaps: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
     uncovered: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    # What the fit was projected from, so it can be re-read later without the
+    # role or posting: [{statement, weight, expected_level}].
+    requirements: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    # Requirement statement -> the user's dimension key it maps to, or null.
+    requirement_map: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     model_id: Mapped[str] = mapped_column(String(128), nullable=False)
     template_version: Mapped[str] = mapped_column(String(128), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

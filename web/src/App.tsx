@@ -7,6 +7,7 @@ import { EmptyState, Loading } from "./components/ui";
 import { AiSettings } from "./features/AiSettings";
 import { Clarify } from "./features/Clarify";
 import { Connect } from "./features/Connect";
+import { GapPlan } from "./features/GapPlan";
 import {
   completeCallback,
   type CallbackOutcome,
@@ -20,7 +21,11 @@ import {
   type Screen,
 } from "./shell/navigation";
 import { PageHeader } from "./shell/PageHeader";
-import { ShellContext, type ShellStatus } from "./shell/ShellContext";
+import {
+  ShellContext,
+  type Handoff,
+  type ShellStatus,
+} from "./shell/ShellContext";
 import { Sidebar } from "./shell/Sidebar";
 import { ToastProvider } from "./shell/toast";
 
@@ -84,10 +89,12 @@ function Shell() {
     confidence: null,
   });
   const [target, setTarget] = useState<string | null>(null);
+  const [handoff, setHandoff] = useState<Handoff | null>(null);
   const [callback, setCallback] = useState<CallbackOutcome | null>(null);
   const handled = useRef(false);
 
-  const navigate = useCallback((next: Screen) => {
+  const navigate = useCallback((next: Screen, carried?: Handoff) => {
+    setHandoff(carried ?? null);
     setScreen(next);
     if (window.location.hash !== hashFor(next)) {
       window.history.pushState(null, "", hashFor(next));
@@ -129,8 +136,8 @@ function Shell() {
   }, [refresh]);
 
   const shell = useMemo(
-    () => ({ status, navigate, refresh, target, setTarget }),
-    [status, navigate, refresh, target],
+    () => ({ status, navigate, handoff, refresh, target, setTarget }),
+    [status, navigate, handoff, refresh, target],
   );
   const me = status.me;
 
@@ -167,11 +174,7 @@ function Shell() {
             {screen === "questions" && <Clarify />}
             {screen === "strengths" && <Strengths />}
             {screen === "roles" && <Roles />}
-            {screen === "plan" && (
-              <EmptyState title="Gap plans are on their way">
-                Planning against a role you pick arrives in the next release.
-              </EmptyState>
-            )}
+            {screen === "plan" && <GapPlan />}
             {screen === "resume" && (
               <EmptyState title="Résumé writing is on its way">
                 Tailoring a résumé to one role at a time arrives in the next

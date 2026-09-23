@@ -414,6 +414,95 @@ select.input { appearance: auto; }
 .ledger-row:hover { background: var(--color-bg); }
 .ledger-row:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
+/* --- gap plan (prototype: isPlan) --------------------------------------- */
+
+/* A Target to plan a route to: role, company, fit, and a subscribed tag. */
+.target-chip {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--color-neutral-300);
+  font-size: 12.5px;
+  max-width: 100%;
+}
+.target-chip:hover { border-color: var(--color-accent); }
+.target-chip:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.target-chip[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-200);
+  color: var(--color-accent-900);
+}
+.target-chip-company { opacity: 0.75; }
+.target-chip-fit { font-weight: 700; color: var(--color-accent-700); }
+.target-chip[aria-pressed="true"] .target-chip-fit { color: var(--color-accent-800); }
+.target-chip-tag { font-size: 11px; color: var(--color-accent-2-800); }
+
+.history-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border-radius: var(--radius-md);
+}
+.history-row[aria-current="true"] { background: var(--color-accent-200); }
+.history-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gap-card {
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  margin-bottom: 12px;
+}
+.gap-card-title { font-family: var(--font-heading); font-size: 17px; }
+.gap-card-lift {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-accent-700);
+  white-space: nowrap;
+}
+.gap-card-why { font-size: 13.5px; line-height: 1.6; margin: 0; }
+.gap-card-cite { font-size: 12.5px; color: var(--color-neutral-800); margin-top: 8px; }
+
+.milestone { margin-bottom: 20px; }
+.milestone-title { font-family: var(--font-heading); font-size: 17px; }
+.milestone-window {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-neutral-700);
+  white-space: nowrap;
+}
+.milestone-outcome { font-size: 12.5px; color: var(--color-neutral-800); margin: 4px 0 8px; }
+
+.task-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+}
+.task-row:hover { background: var(--color-bg); }
+.task-row .round-check { flex: 1; }
+.task-row[data-done="true"] .task-text { text-decoration: line-through; opacity: 0.55; }
+.task-due {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--color-neutral-700);
+  white-space: nowrap;
+  padding-top: 2px;
+}
+
 /* --- data marks ----------------------------------------------------------- */
 
 .you-vs-bar {

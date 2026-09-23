@@ -16,6 +16,7 @@ from modules.assessment.infra.models import (  # noqa: F401
     SkillAssessment,
     SkillDimension,
 )
+from modules.gapplan.infra.models import GapPlan, Milestone, Task  # noqa: F401
 from modules.identity.infra.models import (  # noqa: F401
     Account,
     AiUsageBudget,
@@ -57,6 +58,7 @@ SCHEMAS = (
     "market_user",
     "rolemap",
     "assessment",
+    "gapplan",
     "outbox",
 )
 

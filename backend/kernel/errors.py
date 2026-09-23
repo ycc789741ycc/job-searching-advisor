@@ -35,6 +35,9 @@ class ErrorCode(StrEnum):
     UPSTREAM_FAILED = "upstream_failed"
     # Market
     SOURCE_UNSUPPORTED = "source_unsupported"
+    # Target / gap plan
+    TARGET_UNUSABLE = "target_unusable"
+    PLAN_INVALID = "plan_invalid"
 
 
 class DomainError(Exception):
@@ -76,6 +79,9 @@ UpstreamFailedError = _error("UpstreamFailedError", ErrorCode.UPSTREAM_FAILED)
 
 SourceUnsupportedError = _error("SourceUnsupportedError", ErrorCode.SOURCE_UNSUPPORTED)
 
+TargetUnusableError = _error("TargetUnusableError", ErrorCode.TARGET_UNUSABLE)
+PlanInvalidError = _error("PlanInvalidError", ErrorCode.PLAN_INVALID)
+
 
 HTTP_STATUS_BY_CODE: dict[ErrorCode, int] = {
     ErrorCode.NOT_FOUND: 404,
@@ -94,6 +100,10 @@ HTTP_STATUS_BY_CODE: dict[ErrorCode, int] = {
     ErrorCode.BLOCKED_ADDRESS: 400,
     ErrorCode.UPSTREAM_FAILED: 502,
     ErrorCode.SOURCE_UNSUPPORTED: 422,
+    ErrorCode.TARGET_UNUSABLE: 422,
+    # The model's plan broke the rules: the upstream reply was bad, not the
+    # request.
+    ErrorCode.PLAN_INVALID: 502,
 }
 
 

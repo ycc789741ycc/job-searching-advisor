@@ -137,6 +137,7 @@ export interface MatchedPosting {
   fit: number | null;
   fit_basis: "role";
   subscription_id: string | null;
+  source_kind: string | null;
 }
 
 export interface RoleMapSettings {
@@ -162,4 +163,93 @@ export interface Evidence {
   fact: string;
   observed_on: string | null;
   confidence: number;
+}
+
+export type TargetKind = "matchedPosting" | "subscription" | "privatePosting";
+
+/** What a gap plan or résumé can aim at (domain decision 16). */
+export interface TargetOption {
+  kind: TargetKind;
+  id: string;
+  title: string;
+  role_name: string | null;
+  role_id: string | null;
+  company_name: string;
+  label: string;
+  fit: number | null;
+  salary: { min: number; max: number; currency: string } | null;
+  /** atsBoard / jsonLd / publicApi, "watchlist" or "pasted". */
+  source_kind: string | null;
+  url: string | null;
+  subscription_id: string | null;
+}
+
+export type PlanStatus = "drafting" | "ready" | "failed";
+
+export interface PlanSummary {
+  id: string;
+  target: { kind: TargetKind; id: string };
+  label: string;
+  version: number;
+  status: PlanStatus;
+  error: { code: string; message: string } | null;
+  model_id: string | null;
+  created_at: string;
+  drafted_at: string | null;
+  progress: number;
+}
+
+export interface PlanGap {
+  key: string;
+  kind: "dimension" | "uncovered";
+  name: string;
+  user_score: number | null;
+  target_score: number | null;
+  lift: number;
+  why: string;
+  evidence: { id: string; reference: string; fact: string }[];
+}
+
+export interface PlanTask {
+  id: string;
+  text: string;
+  due: string;
+  closes: string[];
+  done: boolean;
+  /** Finished as a matching task in another plan; it counts here too. */
+  done_elsewhere: boolean;
+}
+
+export interface Plan extends PlanSummary {
+  template_version: string | null;
+  snapshot: {
+    title: string;
+    company: string;
+    role_name: string | null;
+    fit: number | null;
+    basis: "role" | "posting";
+    requirements: { statement: string; expected_level: string }[];
+    taken_at: string;
+  } | null;
+  gaps: PlanGap[];
+  milestones: {
+    id: string;
+    title: string;
+    window: string;
+    outcome: string;
+    tasks: PlanTask[];
+  }[];
+  projects: { name: string; note: string; closes: string[] }[];
+  stepping_stones: {
+    role_id: string;
+    name: string;
+    fit: number;
+    openings: number;
+  }[];
+  versions: PlanSummary[];
+}
+
+export interface PlanEstimate extends CostEstimate {
+  /** The pasted JD still has to be read and scored; that is included. */
+  includes_scoring?: boolean;
 }
