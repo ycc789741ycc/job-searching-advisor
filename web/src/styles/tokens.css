@@ -1,129 +1,42 @@
-/* Design tokens.
+/* Role tokens, mapped onto the Organic design system (organic.css).
  *
- * Chart colours come from the validated default palette in the dataviz
- * reference: categorical slots 1 and 2 (blue, orange), which clear the
- * all-pairs CVD and normal-vision floors in both light and dark mode against
- * their own surfaces. Dark is a selected set of steps, not a flipped light.
+ * The prototype is built on Organic (ADR 0004), so every colour below is one
+ * of its ramp steps. Components and charts use these roles, never a raw hex,
+ * so the palette can be retuned here in one place.
  *
- * Roles, never raw hex, are used everywhere below this block.
+ * Chart series are one ramp step darker than the prototype's accent: the base
+ * terracotta reaches only 2.7:1 against the panel surface, under the 3:1 a
+ * chart mark needs. accent-600 clears it (3.4:1), and the second series is
+ * dashed as well as olive, so the pair never depends on colour alone.
+ *
+ * Organic has no dark variant, and neither does the prototype: the app is
+ * light-only.
  */
 
 :root {
   color-scheme: light;
 
-  /* Chart chrome & ink */
-  --surface-1: #fcfcfb;
-  --page: #f9f9f7;
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #898781;
-  --gridline: #e1e0d9;
-  --axis: #c3c2b7;
-  --border: rgba(11, 11, 11, 0.1);
+  /* Surfaces and ink */
+  --surface-1: var(--color-surface);
+  --page: var(--color-bg);
+  --text-primary: var(--color-text);
+  --text-secondary: var(--color-neutral-800);
+  --text-muted: var(--color-neutral-700);
+  --gridline: color-mix(in srgb, #201e1d 14%, transparent);
+  --axis: color-mix(in srgb, #201e1d 45%, transparent);
+  --border: var(--color-divider);
 
-  /* Categorical slots 1-2 */
-  --series-1: #2a78d6;
-  --series-2: #eb6834;
+  /* Chart series: "You" and "Role bar" */
+  --series-1: var(--color-accent-600);
+  --series-1-fill: color-mix(in srgb, #c67139 24%, transparent);
+  --series-2: var(--color-accent-2-600);
 
-  /* Status - reserved, never reused as a series */
-  --status-good: #0ca30c;
-  --status-warning: #fab219;
-  --status-critical: #d03b3b;
+  /* Status — reserved, never reused as a series. Organic has no red, so
+     critical is the one colour defined here; it clears 5:1 on the surface. */
+  --status-good: var(--color-accent-2-700);
+  --status-warning: var(--color-accent-700);
+  --status-critical: #9e3b2b;
 
-  --radius: 10px;
-  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) {
-    color-scheme: dark;
-    --surface-1: #1a1a19;
-    --page: #0d0d0d;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #898781;
-    --gridline: #2c2c2a;
-    --axis: #383835;
-    --border: rgba(255, 255, 255, 0.1);
-    --series-1: #3987e5;
-    --series-2: #d95926;
-  }
-}
-
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --surface-1: #1a1a19;
-  --page: #0d0d0d;
-  --text-primary: #ffffff;
-  --text-secondary: #c3c2b7;
-  --text-muted: #898781;
-  --gridline: #2c2c2a;
-  --axis: #383835;
-  --border: rgba(255, 255, 255, 0.1);
-  --series-1: #3987e5;
-  --series-2: #d95926;
-}
-
-* { box-sizing: border-box; }
-
-body {
-  margin: 0;
-  font-family: var(--font);
-  background: var(--page);
-  color: var(--text-primary);
-  font-size: 15px;
-  line-height: 1.5;
-}
-
-h1, h2, h3 { line-height: 1.25; margin: 0 0 8px; }
-h1 { font-size: 24px; }
-h2 { font-size: 19px; }
-h3 { font-size: 16px; }
-
-a { color: var(--series-1); }
-
-.card {
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-}
-
-.muted { color: var(--text-muted); }
-.secondary { color: var(--text-secondary); }
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13.5px;
-  font-variant-numeric: tabular-nums;
-}
-.data-table th,
-.data-table td {
-  text-align: left;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--gridline);
-}
-.data-table th { color: var(--text-secondary); font-weight: 600; }
-
-.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; }
-.legend-item { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); }
-.legend-swatch { width: 12px; height: 12px; border-radius: 3px; }
-
-.tooltip {
-  position: absolute;
-  pointer-events: none;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 13px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
-  max-width: 260px;
-  z-index: 10;
-}
-
-@media (max-width: 640px) {
-  body { font-size: 14px; }
-  .card { padding: 16px; }
+  --radius: var(--radius-md);
+  --font: var(--font-body);
 }

@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api/client";
-import type { Me } from "./api/types";
+import type { Assessment, Credential, Me, Question } from "./api/types";
 import { useAuth } from "./auth/AuthProvider";
 import { SignInScreen } from "./auth/SignInScreen";
-import { Button, Loading } from "./components/ui";
+import { EmptyState, Loading } from "./components/ui";
 import { AiSettings } from "./features/AiSettings";
 import { Clarify } from "./features/Clarify";
 import { Connect } from "./features/Connect";
@@ -13,16 +13,16 @@ import {
 } from "./features/oauthCallback";
 import { Roles } from "./features/Roles";
 import { Strengths } from "./features/Strengths";
-
-type Screen = "connect" | "clarify" | "strengths" | "roles" | "settings";
-
-const SCREENS: { id: Screen; label: string }[] = [
-  { id: "connect", label: "Connect" },
-  { id: "clarify", label: "Clarify" },
-  { id: "strengths", label: "Strengths" },
-  { id: "roles", label: "Role map" },
-  { id: "settings", label: "Your model" },
-];
+import {
+  hashFor,
+  metaOf,
+  screenFromHash,
+  type Screen,
+} from "./shell/navigation";
+import { PageHeader } from "./shell/PageHeader";
+import { ShellContext, type ShellStatus } from "./shell/ShellContext";
+import { Sidebar } from "./shell/Sidebar";
+import { ToastProvider } from "./shell/toast";
 
 export function App() {
   const { status } = useAuth();
@@ -38,15 +38,72 @@ export function App() {
       </div>
     );
   }
-  return status === "signed-in" ? <Shell /> : <SignInScreen />;
+  return status === "signed-in" ? (
+    <ToastProvider>
+      <Shell />
+    </ToastProvider>
+  ) : (
+    <SignInScreen />
+  );
+}
+
+/** What the sidebar and header need. Pieces fail independently. */
+export async function loadStatus(): Promise<ShellStatus> {
+  const [me, credential, questions, assessment] = await Promise.all([
+    api.get<Me>("/me").catch(() => null),
+    api.get<Credential | null>("/ai-credential").catch(() => null),
+    api.get<Question[]>("/questions").catch(() => [] as Question[]),
+    api.get<Assessment | null>("/assessments/latest").catch(() => null),
+  ]);
+  const dimensions = assessment?.dimensions ?? [];
+  return {
+    me,
+    credential,
+    openQuestions: questions.filter((question) => question.answer === null)
+      .length,
+    confidence:
+      dimensions.length === 0
+        ? null
+        : Math.round(
+            (dimensions.reduce((sum, d) => sum + d.confidence, 0) /
+              dimensions.length) *
+              100,
+          ),
+  };
 }
 
 function Shell() {
   const { email, signOut } = useAuth();
-  const [screen, setScreen] = useState<Screen>("connect");
-  const [me, setMe] = useState<Me | null>(null);
+  const [screen, setScreen] = useState<Screen>(() =>
+    screenFromHash(window.location.hash),
+  );
+  const [status, setStatus] = useState<ShellStatus>({
+    me: null,
+    credential: null,
+    openQuestions: 0,
+    confidence: null,
+  });
+  const [target, setTarget] = useState<string | null>(null);
   const [callback, setCallback] = useState<CallbackOutcome | null>(null);
   const handled = useRef(false);
+
+  const navigate = useCallback((next: Screen) => {
+    setScreen(next);
+    if (window.location.hash !== hashFor(next)) {
+      window.history.pushState(null, "", hashFor(next));
+    }
+  }, []);
+
+  // Back and forward move between screens like any other page.
+  useEffect(() => {
+    const onHash = () => setScreen(screenFromHash(window.location.hash));
+    window.addEventListener("popstate", onHash);
+    window.addEventListener("hashchange", onHash);
+    return () => {
+      window.removeEventListener("popstate", onHash);
+      window.removeEventListener("hashchange", onHash);
+    };
+  }, []);
 
   // Returning from GitHub or Jira lands on /connections/{kind}/callback.
   // Handled once per page load: the code it carries is single-use.
@@ -57,95 +114,74 @@ function Shell() {
       window.history.replaceState(null, "", url),
     ).then((outcome) => {
       if (outcome) {
-        setScreen("connect");
+        navigate("sources");
         setCallback(outcome);
       }
     });
+  }, [navigate]);
+
+  const refresh = useCallback(async () => {
+    setStatus(await loadStatus());
   }, []);
 
   useEffect(() => {
-    void api
-      .get<Me>("/me")
-      .then(setMe)
-      .catch(() => setMe(null));
-  }, []);
+    void refresh();
+  }, [refresh]);
+
+  const shell = useMemo(
+    () => ({ status, navigate, refresh, target, setTarget }),
+    [status, navigate, refresh, target],
+  );
+  const me = status.me;
 
   return (
-    <div style={{ maxWidth: 1080, margin: "0 auto", padding: "0 16px 64px" }}>
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 16,
-          padding: "16px 0",
-          flexWrap: "wrap",
-        }}
-      >
-        <strong>Job Searching Advisor</strong>
-        <nav style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-          {SCREENS.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setScreen(item.id)}
-              aria-current={screen === item.id ? "page" : undefined}
-              style={{
-                border: "none",
-                background:
-                  screen === item.id ? "var(--surface-1)" : "transparent",
-                color:
-                  screen === item.id
-                    ? "var(--text-primary)"
-                    : "var(--text-secondary)",
-                borderBottom:
-                  screen === item.id
-                    ? "2px solid var(--series-1)"
-                    : "2px solid transparent",
-                font: "inherit",
-                fontWeight: 600,
-                fontSize: 14,
-                padding: "8px 12px",
-                cursor: "pointer",
-                borderRadius: "8px 8px 0 0",
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
-        <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span className="muted" style={{ fontSize: 13 }}>
-            {me?.email ?? email}
-          </span>
-          <Button variant="secondary" onClick={() => void signOut()}>
-            Sign out
-          </Button>
-        </span>
-      </header>
-
-      {me?.background_jobs_paused && (
-        <p
-          role="alert"
-          className="card"
-          style={{
-            color: "var(--status-critical)",
-            fontSize: 13.5,
-            marginBottom: 16,
-          }}
-        >
-          <span aria-hidden="true">⚠</span> Background work is paused:{" "}
-          {me.paused_reason}. Your reports will go out of date until this is
-          fixed on the “Your model” screen.
-        </p>
-      )}
-
-      <main>
-        {screen === "connect" && <Connect callback={callback} />}
-        {screen === "clarify" && <Clarify />}
-        {screen === "strengths" && <Strengths />}
-        {screen === "roles" && <Roles />}
-        {screen === "settings" && <AiSettings />}
-      </main>
-    </div>
+    <ShellContext.Provider value={shell}>
+      <div className="app">
+        <Sidebar current={screen} status={status} onNavigate={navigate} />
+        <main className="main">
+          <PageHeader
+            meta={metaOf(screen)}
+            status={status}
+            target={target}
+            email={me?.email ?? email}
+            onSignOut={() => void signOut()}
+          />
+          <div className="page-body" key={screen}>
+            {me?.background_jobs_paused && (
+              <p
+                role="alert"
+                className="inset"
+                style={{
+                  color: "var(--status-critical)",
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  marginTop: 0,
+                }}
+              >
+                <span aria-hidden="true">⚠</span> Background work is paused:{" "}
+                {me.paused_reason}. Your reports will go out of date until this
+                is fixed under “AI &amp; model”.
+              </p>
+            )}
+            {screen === "sources" && <Connect callback={callback} />}
+            {screen === "questions" && <Clarify />}
+            {screen === "strengths" && <Strengths />}
+            {screen === "roles" && <Roles />}
+            {screen === "plan" && (
+              <EmptyState title="Gap plans are on their way">
+                Planning against a role you pick arrives in the next release.
+              </EmptyState>
+            )}
+            {screen === "resume" && (
+              <EmptyState title="Résumé writing is on its way">
+                Tailoring a résumé to one role at a time arrives in the next
+                release.
+              </EmptyState>
+            )}
+            {screen === "model" && <AiSettings />}
+          </div>
+        </main>
+      </div>
+    </ShellContext.Provider>
   );
 }

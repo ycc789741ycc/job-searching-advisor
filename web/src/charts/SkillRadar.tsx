@@ -105,20 +105,19 @@ export function SkillRadar({
           {targetScores && (
             <polygon
               points={radarPolygon(targetScores, RADIUS, CENTRE)}
-              fill="var(--series-2)"
-              fillOpacity="0.12"
+              fill="none"
               stroke="var(--series-2)"
-              strokeWidth="2"
+              strokeWidth="2.5"
+              strokeDasharray="7 5"
               strokeLinejoin="round"
             />
           )}
 
           <polygon
             points={radarPolygon(scores, RADIUS, CENTRE)}
-            fill="var(--series-1)"
-            fillOpacity="0.18"
+            fill="var(--series-1-fill)"
             stroke="var(--series-1)"
-            strokeWidth="2"
+            strokeWidth="3"
             strokeLinejoin="round"
           />
 
@@ -215,11 +214,18 @@ export function SkillRadar({
             You
           </span>
           <span className="legend-item">
-            <span
-              className="legend-swatch"
-              style={{ background: "var(--series-2)" }}
-              aria-hidden="true"
-            />
+            {/* Dashed like its line, so the pair never relies on colour. */}
+            <svg width="16" height="4" aria-hidden="true">
+              <line
+                x1="0"
+                y1="2"
+                x2="16"
+                y2="2"
+                stroke="var(--series-2)"
+                strokeWidth="2.5"
+                strokeDasharray="5 3"
+              />
+            </svg>
             {target.label} expects
           </span>
         </div>
