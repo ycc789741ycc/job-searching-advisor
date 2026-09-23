@@ -120,8 +120,8 @@ start-infra: require-env
 # one mode replaces the other, since both run the same services.
 start-app: require-env require-mode-images migrate
 	$(COMPOSE_APP) up -d --no-build
-	@echo "MODE=$(MODE): api on port $$(grep -E '^API_PUBLISHED_PORT=' $(ENV_FILE) | cut -d= -f2)," \
-	      "web on $$(grep -E '^WEB_PUBLISHED_PORT=' $(ENV_FILE) | cut -d= -f2)"
+	@echo "MODE=$(MODE): api on $$($(COMPOSE_APP) port api 8000)," \
+	      "web on $$($(COMPOSE_APP) port web 8080)"
 
 # Stops whichever mode is running: both run the same services in one project.
 stop-app: require-env check-mode

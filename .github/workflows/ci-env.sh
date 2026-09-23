@@ -32,12 +32,7 @@ PY
 }
 
 set_value APP_ENV ci
-set_value CORS_ALLOWED_ORIGINS http://localhost:5173
-set_value API_PUBLISHED_PORT 8000
-set_value WEB_PUBLISHED_PORT 5173
-set_value POSTGRES_PUBLISHED_PORT 55432
-set_value S3_PUBLISHED_PORT 9000
-set_value S3_CONSOLE_PUBLISHED_PORT 9001
+set_value CORS_ALLOWED_ORIGINS http://localhost:21471
 # Service names on the container network, not localhost.
 set_value POSTGRES_HOST postgres
 set_value POSTGRES_PORT 5432
@@ -55,12 +50,12 @@ set_value MASTER_ENCRYPTION_KEY "$(key)"
 set_value AUTH_JWT_SECRET "$(pw)$(pw)"
 set_value AUTH_COOKIE_SECURE false
 set_value S3_ENDPOINT_URL http://objectstore:9000
-set_value S3_PUBLIC_ENDPOINT_URL http://localhost:9000
+set_value S3_PUBLIC_ENDPOINT_URL http://localhost:21473
 set_value S3_REGION us-east-1
 set_value S3_BUCKET jsa-ci
 set_value S3_ACCESS_KEY_ID jsa-ci-access
 set_value S3_SECRET_ACCESS_KEY "$(pw)"
-set_value OAUTH_REDIRECT_BASE_URL http://localhost:5173
+set_value OAUTH_REDIRECT_BASE_URL http://localhost:21471
 set_value GITHUB_OAUTH_CLIENT_ID ci-github
 set_value GITHUB_OAUTH_CLIENT_SECRET "$(pw)"
 set_value GITHUB_API_BASE_URL https://api.github.com
@@ -68,7 +63,7 @@ set_value JIRA_OAUTH_CLIENT_ID ci-jira
 set_value JIRA_OAUTH_CLIENT_SECRET "$(pw)"
 set_value JIRA_API_BASE_URL https://api.atlassian.com
 set_value JIRA_OAUTH_BASE_URL https://auth.atlassian.com
-set_value WEB_API_BASE_URL http://localhost:8000
+set_value WEB_API_BASE_URL http://localhost:21470
 
 blank=$(grep -E '^[A-Z_]+=$' .env || true)
 if [ -n "$blank" ]; then

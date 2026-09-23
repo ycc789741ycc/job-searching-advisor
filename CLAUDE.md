@@ -75,7 +75,11 @@ as `-v` in a Makefile recipe. The overlay is deliberately not called
 
 Hostnames in `.env` are compose service names on the `jsa_net` network, not
 `localhost`. The only host-facing values are the `*_PUBLISHED_PORT` numbers,
-which are what your browser and any database client connect to.
+which are what your browser and any database client connect to. They take this
+repo's block, `21470`–`21474` (api, web, Postgres, MinIO, MinIO console), never a
+common default like `8000`, `5173` or `5432`, so the stack runs beside other
+projects without a bind failure. Containers keep their conventional ports inside
+`jsa_net`.
 
 `make test-unit` runs in a container with `--network none`, so it is hermetic by
 construction rather than by convention. `make test-integration` runs on the
