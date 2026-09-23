@@ -24,7 +24,7 @@ services:
     ports:
       # Published for a human with a database client. Services reach Postgres by
       # its service name on jsa_net, not through this port.
-      - "${POSTGRES_PUBLISHED_PORT:?POSTGRES_PUBLISHED_PORT is required}:5432"
+      - "${POSTGRES_PUBLISHED_PORT:-21472}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -44,8 +44,8 @@ services:
     ports:
       # Published so a browser can follow a presigned URL, which is signed
       # against S3_PUBLIC_ENDPOINT_URL.
-      - "${S3_PUBLISHED_PORT:?S3_PUBLISHED_PORT is required}:9000"
-      - "${S3_CONSOLE_PUBLISHED_PORT:?S3_CONSOLE_PUBLISHED_PORT is required}:9001"
+      - "${S3_PUBLISHED_PORT:-21473}:9000"
+      - "${S3_CONSOLE_PUBLISHED_PORT:-21474}:9001"
     volumes:
       - objectdata:/data
     healthcheck:

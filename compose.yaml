@@ -57,7 +57,7 @@ services:
       - --port
       - "8000"
     ports:
-      - "${API_PUBLISHED_PORT:?API_PUBLISHED_PORT is required}:8000"
+      - "${API_PUBLISHED_PORT:-21470}:8000"
 
   # Runs AI jobs and connector syncs. Holds the master key and connector tokens.
   worker:
@@ -111,7 +111,7 @@ services:
     environment:
       WEB_API_BASE_URL: ${WEB_API_BASE_URL:?WEB_API_BASE_URL is required}
     ports:
-      - "${WEB_PUBLISHED_PORT:?WEB_PUBLISHED_PORT is required}:8080"
+      - "${WEB_PUBLISHED_PORT:-21471}:8080"
 
 volumes:
   modelcache:
