@@ -128,7 +128,7 @@ backend/
                 infra/      repositories and adapters
                 jobs.py     worker handlers
   crawler/    its own deployable: hostile HTML, no secrets, no user data
-web/          React + Vite SPA
+web/          React + Vite SPA, on the prototype's Organic design system (ADR 0004)
 ```
 
 The domain model sits in one top-level `domain/` folder rather than inside each

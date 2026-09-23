@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { Button, ErrorNote, Field, inputStyle } from "../components/ui";
+import { useState, type CSSProperties, type FormEvent } from "react";
+import { Button, ErrorNote, Field } from "../components/ui";
 import { useAuth } from "./AuthProvider";
 
 const MIN_PASSWORD_LENGTH = 12;
@@ -32,34 +32,51 @@ export function SignInScreen() {
 
   return (
     <div
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        placeItems: "center",
-        padding: 24,
-      }}
+      className="auto-grid"
+      style={
+        {
+          "--col": "360px",
+          "--gap": "20px",
+          minHeight: "100vh",
+          alignItems: "center",
+        } as CSSProperties
+      }
     >
-      <div style={{ width: "100%", maxWidth: 400 }}>
-        <h1 style={{ textAlign: "center" }}>Job Searching Advisor</h1>
-        <p
-          className="secondary"
-          style={{ textAlign: "center", margin: "0 0 24px", fontSize: 14.5 }}
+      <div style={{ padding: "56px 48px", maxWidth: 580 }}>
+        <div
+          className="brand"
+          style={{ padding: 0, marginBottom: 36, fontSize: 20 }}
         >
-          Turn the work you have actually done into a picture of where you stand
-          and what to aim at next.
+          <span
+            className="brand-dot"
+            style={{ width: 32, height: 32 }}
+            aria-hidden="true"
+          />
+          Job Searching Advisor
+        </div>
+        <h1 style={{ fontSize: 44, lineHeight: 1.08, marginBottom: 16 }}>
+          Your next role, read from the work you already did.
+        </h1>
+        <p className="lead" style={{ fontSize: 17, maxWidth: "46ch" }}>
+          Connect GitHub and Jira. We read what you actually shipped, score it
+          against real market bars, and plan the distance to the role you pick.
         </p>
 
-        <form className="card" onSubmit={submit}>
-          <h2 style={{ marginTop: 0, fontSize: 17 }}>
+        <form
+          onSubmit={submit}
+          style={{ display: "grid", gap: 4, maxWidth: 430, marginTop: 30 }}
+        >
+          <h2 style={{ fontSize: 21, margin: "0 0 10px" }}>
             {registering ? "Create an account" : "Sign in"}
           </h2>
 
           <Field label="Email">
             <input
-              style={inputStyle}
+              className="input"
               type="email"
               value={email}
               autoComplete="email"
+              placeholder="you@work.com"
               required
               onChange={(event) => setEmail(event.target.value)}
             />
@@ -74,7 +91,7 @@ export function SignInScreen() {
               : {})}
           >
             <input
-              style={inputStyle}
+              className="input"
               type="password"
               value={password}
               autoComplete={registering ? "new-password" : "current-password"}
@@ -86,42 +103,103 @@ export function SignInScreen() {
 
           <ErrorNote error={error} />
 
-          <Button type="submit" busy={busy} disabled={!email || !password}>
-            {registering ? "Create account" : "Sign in"}
-          </Button>
-
-          <p className="secondary" style={{ fontSize: 13.5, marginBottom: 0 }}>
-            {registering ? "Already have an account?" : "No account yet?"}{" "}
-            <button
-              type="button"
+          <div className="row">
+            <Button type="submit" busy={busy} disabled={!email || !password}>
+              {registering ? "Create account" : "Sign in"}
+            </Button>
+            <span className="subcopy" style={{ fontSize: 13.5 }}>
+              {registering ? "Already have an account?" : "No account yet?"}
+            </span>
+            <Button
+              variant="ghost"
               onClick={() => {
                 setMode(registering ? "sign-in" : "register");
                 setError(null);
               }}
-              style={{
-                background: "none",
-                border: "none",
-                padding: 0,
-                font: "inherit",
-                color: "var(--series-1)",
-                cursor: "pointer",
-                textDecoration: "underline",
-              }}
             >
-              {registering ? "Sign in" : "Create one"}
-            </button>
+              {registering ? "Sign in instead" : "Create one"}
+            </Button>
+          </div>
+
+          {/* Said plainly rather than discovered later. */}
+          <p
+            className="muted"
+            style={{ fontSize: 12.5, lineHeight: 1.5, marginTop: 10 }}
+          >
+            You bring your own AI provider and key after signing in — nothing is
+            analysed until you do. There is no password reset yet, and your
+            address is not verified. Keep your password somewhere safe.
           </p>
         </form>
+      </div>
 
-        {/* Said plainly rather than discovered later. */}
-        <p
-          className="muted"
-          style={{ fontSize: 12.5, textAlign: "center", marginTop: 14 }}
+      <div style={{ padding: 40, display: "flex", justifyContent: "center" }}>
+        <div
+          className="panel"
+          style={{
+            width: "100%",
+            maxWidth: 420,
+            boxShadow: "var(--shadow-md)",
+          }}
         >
-          There is no password reset yet, and your address is not verified. Keep
-          your password somewhere safe.
-        </p>
+          <div className="row" style={{ gap: 8, marginBottom: 12 }}>
+            <span className="tag tag-accent">Skill radar</span>
+            <span className="tag tag-accent-2">Salary bubbles</span>
+            <span className="tag tag-outline">Gap plan</span>
+          </div>
+          <div className="divided">
+            {PITCH.map((point, index) => (
+              <div key={point.title} style={{ display: "flex", gap: 14 }}>
+                <div
+                  aria-hidden="true"
+                  style={{
+                    width: 34,
+                    height: 34,
+                    flex: "0 0 auto",
+                    borderRadius: 999,
+                    background: "var(--color-accent-2-200)",
+                    color: "var(--color-accent-2-800)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontFamily: "var(--font-heading)",
+                    fontSize: 14,
+                  }}
+                >
+                  {index + 1}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>
+                    {point.title}
+                  </div>
+                  <div className="subcopy" style={{ fontSize: 13.5 }}>
+                    {point.note}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
+
+const PITCH = [
+  {
+    title: "Evidence, not self-assessment",
+    note: "Every score cites the pull request, ticket or résumé line it came from.",
+  },
+  {
+    title: "Roles from real openings",
+    note: "Grouped from public job boards in the markets you choose.",
+  },
+  {
+    title: "A plan to close the distance",
+    note: "Milestones against the one role and company you pick.",
+  },
+  {
+    title: "Your model, your key",
+    note: "Every AI call runs on a provider you already pay for.",
+  },
+];

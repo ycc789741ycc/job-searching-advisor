@@ -4,7 +4,12 @@ import { App } from "./App";
 import { AuthProvider } from "./auth/AuthProvider";
 import { loadConfig } from "./config";
 import { StartupBoundary, StartupError } from "./StartupError";
+// Order matters: the design system, its fonts, the role tokens mapped onto
+// it, then the prototype's layout patterns.
+import "./styles/organic.css";
+import "./styles/fonts.css";
 import "./styles/tokens.css";
+import "./styles/app.css";
 
 const root = createRoot(document.getElementById("root")!);
 
