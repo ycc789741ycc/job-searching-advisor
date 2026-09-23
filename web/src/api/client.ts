@@ -87,3 +87,80 @@ export const api = {
     return request<T>(path, { method: "POST", body: form });
   },
 };
+
+export interface ServerEvent {
+  event: string;
+  data: string;
+}
+
+/** Split an SSE buffer into complete events and what is left over. Pure. */
+export function parseEvents(buffer: string): {
+  events: ServerEvent[];
+  rest: string;
+} {
+  const normalised = buffer.replace(/\r\n/g, "\n");
+  const blocks = normalised.split("\n\n");
+  const rest = blocks.pop() ?? "";
+  const events: ServerEvent[] = [];
+  for (const block of blocks) {
+    let event = "message";
+    const data: string[] = [];
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:"))
+        data.push(line.slice(5).replace(/^ /, ""));
+    }
+    if (data.length > 0) events.push({ event, data: data.join("\n") });
+  }
+  return { events, rest };
+}
+
+/**
+ * POST and read Server-Sent Events as they arrive.
+ *
+ * `EventSource` can neither POST a body nor send the bearer token, so the
+ * résumé chat reads the stream itself. A refusal before streaming starts
+ * throws an `ApiError`, as any other call would.
+ */
+export async function streamEvents(
+  path: string,
+  body: unknown,
+  onEvent: (event: ServerEvent) => void,
+): Promise<void> {
+  const token = await getToken();
+  const headers = new Headers({
+    "content-type": "application/json",
+    accept: "text/event-stream",
+  });
+  if (token) headers.set("authorization", `Bearer ${token}`);
+  const response = await fetch(`${apiBase()}/api/v1${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!response.ok || !response.body) {
+    const text = await response.text();
+    const envelope = (text ? JSON.parse(text) : null) as {
+      error?: { code?: string; message?: string };
+    } | null;
+    throw new ApiError(
+      envelope?.error?.code ?? "unknown",
+      envelope?.error?.message ?? `Request failed (${response.status})`,
+      response.status,
+    );
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const { events, rest } = parseEvents(buffer);
+    buffer = rest;
+    events.forEach(onEvent);
+  }
+  const { events } = parseEvents(`${buffer}\n\n`);
+  events.forEach(onEvent);
+}

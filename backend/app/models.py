@@ -42,6 +42,7 @@ from modules.profile.infra.models import (  # noqa: F401
     ResumeFile,
     SourceConnection,
 )
+from modules.resume.infra.models import Export, Resume, ResumeVersion, Revision  # noqa: F401
 from modules.rolemap.infra.models import (  # noqa: F401
     Role,
     RoleLineage,
@@ -59,6 +60,7 @@ SCHEMAS = (
     "rolemap",
     "assessment",
     "gapplan",
+    "resume",
     "outbox",
 )
 

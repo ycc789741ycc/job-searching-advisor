@@ -39,7 +39,7 @@ flowchart LR
 |---|---|---|---|
 | `web` | SPA for the prototype's screens; no business rules, no AI calls | No | API, auth provider |
 | `api` | HTTP + SSE, routers for every module, résumé chat streaming | **AI key only** (for chat streaming) | User's LLM provider |
-| `worker` | Queued and scheduled jobs: `ai` (assessment, per-user role map over the user's top k, fit, gap plans per Target, difficulty estimates), `sync` (connectors, résumé parsing — **no AI**, domain decision 18), `docs` (PDF export), `notify` (weekly digest, interview prompts) | AI key (`ai` queue), connector OAuth tokens (`sync` queue) | LLM provider, GitHub/Jira/LinkedIn, personal sites, email |
+| `worker` | Queued and scheduled jobs: `ai` (assessment, per-user role map over the user's top k, fit, gap plans per Target, résumé writing, difficulty estimates), `sync` (connectors, résumé parsing — **no AI**, domain decision 18), `docs` (résumé PDF export with WeasyPrint, ADR 0007), `notify` (weekly digest, interview prompts — not built yet) | AI key (`ai` queue), connector OAuth tokens (`sync` queue) | LLM provider, GitHub/Jira/LinkedIn, personal sites, email |
 | `crawler` | Weekly crawl of baseline and demand sources, and rate-limited single-company refresh: parse, normalize, dedup, embed and expire postings | **None** | Public job boards, job APIs, and subscription URLs (SSRF-guarded) |
 
 **Why the crawler is its own unit:**
@@ -47,7 +47,7 @@ flowchart LR
 - It runs on a different schedule (weekly).
 - It holds no secrets and never reads user data.
 
-The four worker queues share one image for the MVP. Split them later by giving each queue its own process group, e.g. when Playwright's memory use starts crowding out AI jobs.
+The worker queues share one image for the MVP. Split them later by giving each queue its own process group, e.g. when PDF rendering's memory use starts crowding out AI jobs.
 
 ### Stack
 | Layer | Choice | Why |
@@ -55,7 +55,7 @@ The four worker queues share one image for the MVP. Split them later by giving e
 | API | Python 3.12, FastAPI, Pydantic v2 | Pydantic models are used for both API contracts and LLM output validation |
 | Persistence | Postgres, SQLAlchemy 2, Alembic | One managed database for data, queue and outbox |
 | Jobs | Procrastinate (Postgres-backed, periodic tasks) | No Redis at MVP scale |
-| Documents | Playwright (PDF export), pypdf / python-docx (parsing) | |
+| Documents | WeasyPrint (PDF export, [ADR 0007](decisions/0007-render-resume-pdfs-with-weasyprint.md)), pypdf / python-docx (parsing) | No browser in the image; the export fetches nothing |
 | Local ML | sentence-transformers + HDBSCAN | Works with every LLM provider, including Anthropic, which has no embeddings API |
 | Client | React + Vite, `openapi-typescript` client generated from FastAPI's OpenAPI | The API contract is the client/server boundary, checked in CI |
 | Auth | Own sign-in in `identity`: Argon2id, 15-minute HS256 access tokens, rotating refresh cookie | No external account needed to run the app; see [ADR 0001](decisions/0001-run-our-own-email-password-sign-in.md) |
@@ -83,7 +83,7 @@ web/                        # TS client
 >
 > The domain model is one top-level `domain/` folder with a package per feature, not a `domain/` inside each module. That is the design guideline's rule (its ADR 0002): the layer boundary is visible, and can be checked, against one path. The cost it names applies here too: one feature now spans `domain/<m>/` and `modules/<m>/`. Before 2026-09-22 each module had its own `domain/`, so ADRs 0002 and 0003 still cite `modules/rolemap/domain/selection.py`, which is now `domain/rolemap/selection.py`.
 >
-> `gapplan` replaces the earlier `growth`: with no CareerGoal (domain decision 16), the module is about plans for a Target and nothing else. The Target itself has its own feature package and module, `target`, because both `gapplan` and `resume` aim at one and rules 7 and 8 forbid either from owning it ([ADR 0005](decisions/0005-resolve-targets-in-their-own-module.md)). `target` has no tables: it resolves a Target through other modules' `public.py` and hands back a frozen snapshot that the plan or résumé stores. `resume` is Phase 2 and not built yet.
+> `gapplan` replaces the earlier `growth`: with no CareerGoal (domain decision 16), the module is about plans for a Target and nothing else. The Target itself has its own feature package and module, `target`, because both `gapplan` and `resume` aim at one and rules 7 and 8 forbid either from owning it ([ADR 0005](decisions/0005-resolve-targets-in-their-own-module.md)). `target` has no tables: it resolves a Target through other modules' `public.py` and hands back a frozen snapshot that the plan or résumé stores. `resume` serves its routes under `/tailored-resumes`, because `/resumes` is the profile's, for uploaded files.
 
 ### Rules (enforced in CI with `import-linter` contracts)
 1. A module imports another module **only** through its `public.py`.
@@ -108,6 +108,7 @@ web/                        # TS client
 | `SubscriptionAdded(company, url)` | market | worker materialises a `market.crawl_source` from the URL with no user id → single-company crawl |
 | `RoleRequirementsChanged`, `RoleSplitOrMerged` | rolemap | assessment.compute_fits; later gapplan.suggest_successor (for Targets whose snapshot came from that Role — not built: rolemap does not emit `RoleSplitOrMerged` yet) |
 | `PlanDrafted` | gapplan | nothing yet; recorded for the match digest and progress history |
+| `ResumeTailored`, `ResumeVersionSaved` | resume | nothing yet; `ResumeTailored` is what the interview-report prompt will key on |
 | `InterviewReported` | profile | market.record_contribution, profile.add_evidence, assessment.calibrate_fit |
 | `ProviderCredentialFailed`, `UsageBudgetExceeded` | kernel.ai_gateway | identity.pause_background_jobs, notify |
 
@@ -148,6 +149,7 @@ web/                        # TS client
 | RoleSubscription, MarketPreference | `market_user.company_subscription`, `market_user.market_preference` | User-owned. The subscription table keeps its name and gains `role_title`, a nullable `role_id` and a nullable `url` (domain decision 19); renaming it would mean rewriting the fan-out RLS policy for no gain. The worker copies the needed companies, URLs and markets into `market.crawl_source` **without user ids**, so the crawler can't tell who asked for them. |
 | Baseline sources (domain decision 15) | `market.crawl_source` with `origin = 'baseline'` | A versioned seed owned by `modules.market`, loaded by `make migrate`. It is data reviewed like code, not environment configuration. Demand rows have `origin = 'demand'`. Neither carries a user id. |
 | Role count k (domain decision 17) | `rolemap.role_map_setting` | Owner zone, one row per user; the bound is enforced in the `rolemap` domain rule and the API schema (ADR 0003). |
+| Resume, ResumeVersion, RevisionThread, exports | `resume.resume`, `resume.version`, `resume.revision`, `resume.export` | Owner zone. A résumé holds its Target like a plan does, with its snapshot and RequirementCoverage. Versions are never overwritten (`generated`, `manual`, `chat`); each chat exchange keeps the proposal it made and the version it became; exported PDFs live in object storage under `users/{owner}/exports/`. |
 | GapPlan, Milestone, Task | `gapplan.plan`, `gapplan.milestone`, `gapplan.task` | Owner zone. A plan row holds the Target as `target_kind` plus one of `job_posting_id`, `subscription_id` or `private_posting_id`, and the frozen requirements snapshot, so a plan survives posting expiry and re-clustering. Regenerating adds a row with the next `version`; finished tasks carry over by matching. Each row has a `status` (`drafting`, `ready`, `failed`) and the failure's code ([ADR 0006](decisions/0006-report-ai-job-progress-through-a-status-the-page-polls.md)). |
 | What a fit was projected from | `assessment.role_fit.requirements`, `requirement_map` | The requirements and which of the user's dimensions each mapped to, so a Target snapshot and requirement coverage can be read without the role or posting. A fit may now be for a pasted JD (`private_posting_id`). |
 | Pasted JDs (decision 12) | `market_user.private_job_posting` | The crawler role and shared queries physically can't reach them. An optional `shared_posting_id` gives a one-way link to a matching crawled posting. |
@@ -210,7 +212,7 @@ flowchart LR
 
 - **Prompt templates** are versioned files. Each snapshot (SkillAssessment, RoleFit, GapPlan, ResumeVersion) stores the model id and template version.
 - **First-run cost confirmation** comes from the same estimate step, run in dry-run mode. The role-map estimate is capped at the user's k, and raising k asks for confirmation again (ADR 0003).
-- **Callers:** `assessment` (analysis, follow-up questions, fit, reading a pasted JD's requirements), `rolemap` (naming, requirements, difficulty), `gapplan` (drafting), and later `resume`. Never `profile`: ingestion is outside the gateway (rule 6).
+- **Callers:** `assessment` (analysis, follow-up questions, fit, reading a pasted JD's requirements), `rolemap` (naming, requirements, difficulty), `gapplan` (drafting) and `resume` (writing, and the revision chat through `stream_structured`: prose streams, the marker never does, and the JSON after it is validated like any `run`). Never `profile`: ingestion is outside the gateway (rule 6).
 - **Local ML is outside the gateway.** sentence-transformers and HDBSCAN run in `crawler` (posting embeddings, dedup) and in `worker` (per-user clustering over the embeddings of that user's market postings). The gateway on the user's key only **names clusters and extracts requirements**. Rule: *generative AI is paid by the user; plain computation is paid by the platform* (domain decision 7).
 
 ## 6. Schedules and flows across units
@@ -229,9 +231,9 @@ flowchart LR
 | Résumé uploaded | api → worker (`sync`) | store file → parse → Evidence and base résumé |
 | User picks a Target and generates a plan | api → worker (`ai`) | cost estimate → user confirms → plan row `drafting` → worker snapshots the Target (a pasted JD is read and scored first) → gaps ranked by fit points → draft → validate → `ready` or `failed` with a code; the SPA polls the row (ADR 0006) |
 | User reopens a plan | api | read the GapPlan version; no AI |
-| User picks a résumé Target | api → worker (`ai`) | RequirementCoverage from RoleFit → first ResumeVersion, every bullet citing Evidence |
-| Résumé chat | api | `ai_gateway.stream` over SSE; each accepted edit saves a ResumeVersion |
-| Export PDF | api → worker (`docs`) | Playwright render (white background, template) → object storage → signed URL |
+| User picks a résumé Target | api → worker (`ai`) | cost estimate → user confirms → résumé row `drafting` → Target snapshot → RequirementCoverage from scores against the snapshot's bar → first ResumeVersion, every written line citing the user's Evidence, over the uploaded résumé when there is one |
+| Résumé chat | api | `ai_gateway.stream_structured` over SSE (a POST read with `fetch`, since it carries the draft and a bearer token): `text` events, then one `proposal` or `error`; an accepted proposal saves a ResumeVersion |
+| Export PDF | api → worker (`docs`) | WeasyPrint render of a saved version (white page, template, nothing fetched) → object storage → the SPA polls the export and gets a signed URL |
 
 ## 7. Decisions
 
@@ -252,6 +254,7 @@ flowchart LR
 | T13 | Gap plans are keyed by Target (kind plus reference plus frozen requirements snapshot) in the `gapplan` module; the earlier `growth` module is not built |
 | T14 | Targets are resolved by their own table-less `target` module ([ADR 0005](decisions/0005-resolve-targets-in-their-own-module.md)) |
 | T15 | A job-produced result exists from the request, with a status the SPA polls; SSE is kept for the résumé chat ([ADR 0006](decisions/0006-report-ai-job-progress-through-a-status-the-page-polls.md)) |
+| T16 | Résumé PDFs are rendered by WeasyPrint on the `docs` queue, not a headless browser ([ADR 0007](decisions/0007-render-resume-pdfs-with-weasyprint.md)) |
 
 ### Coverage of domain decisions
 

@@ -327,6 +327,12 @@ export function Roles() {
                 >
                   Draft the plan with AI
                 </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => navigate("resume", { roleId: activeRole.id })}
+                >
+                  Tailor résumé
+                </Button>
               </div>
 
               <details style={{ marginTop: 16 }}>

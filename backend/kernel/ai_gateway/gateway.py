@@ -63,6 +63,22 @@ class Result[TModel: BaseModel]:
 
 
 @dataclass(frozen=True, slots=True)
+class StreamText:
+    """Prose from a structured stream, safe to show as it arrives."""
+
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class StreamResult[TModel: BaseModel]:
+    """The validated object that ends a structured stream."""
+
+    value: TModel
+    model_id: str
+    template_version: str
+
+
+@dataclass(frozen=True, slots=True)
 class Estimate:
     """What a call would cost, before any money is spent."""
 
@@ -287,6 +303,66 @@ class AiGateway:
                 ),
             )
         )
+
+    async def stream_structured(
+        self,
+        owner_id: uuid.UUID,
+        *,
+        task: str,
+        template: PromptTemplate,
+        inputs: dict[str, str],
+        output_schema: type[T],
+        marker: str,
+        untrusted: frozenset[str] = frozenset(),
+    ) -> AsyncIterator[StreamText | StreamResult[T]]:
+        """Prose as it arrives, then one validated object.
+
+        The template asks for the reply followed by ``marker`` and a JSON
+        object. Text before the marker streams to the caller; the marker never
+        does. The JSON is validated against ``output_schema`` exactly as
+        :meth:`run` would, and ends the stream as a :class:`StreamResult`.
+
+        There is no retry: the prose has already been shown, so a second
+        attempt would contradict it. Invalid output raises
+        ``OutputInvalidError`` after the text.
+        """
+        credential = await self._credentials.load(owner_id)
+        pending = ""
+        tail: str | None = None
+        async for chunk in self.stream(
+            owner_id, task=task, template=template, inputs=inputs, untrusted=untrusted
+        ):
+            if tail is not None:
+                tail += chunk
+                continue
+            release, tail = _split_at_marker(pending + chunk, marker)
+            pending = "" if tail is not None else (pending + chunk)[len(release) :]
+            if release:
+                yield StreamText(release)
+        if tail is None:
+            if pending:
+                yield StreamText(pending)
+            raise OutputInvalidError("the reply ended without its structured part")
+        yield StreamResult(
+            value=_parse(tail, output_schema),
+            model_id=credential.model,
+            template_version=template.version_id,
+        )
+
+
+def _split_at_marker(buffer: str, marker: str) -> tuple[str, str | None]:
+    """Text safe to release now, and what follows the marker if it has come.
+
+    Text is held back while it could still be the start of the marker, so no
+    part of the marker ever reaches the reader.
+    """
+    at = buffer.find(marker)
+    if at >= 0:
+        return buffer[:at], buffer[at + len(marker) :]
+    for keep in range(min(len(marker) - 1, len(buffer)), 0, -1):
+        if marker.startswith(buffer[-keep:]):
+            return buffer[:-keep], None
+    return buffer, None
 
 
 def _parse[TOut: BaseModel](text: str, schema: type[TOut]) -> TOut:

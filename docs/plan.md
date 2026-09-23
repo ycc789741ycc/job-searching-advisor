@@ -51,6 +51,25 @@ later phase — never a market data source.
   rolemap does not emit that event yet.
 
 ## Resume Advisor
+* **Done.** Write for a Target — a top matched opening, a watched role, or a
+  pasted JD ("My own JD", scored on the user's key first). Filters are by where
+  an opening was found (ATS board, careers page, public job API, watchlist),
+  never LinkedIn, Indeed or Glassdoor.
+* The first version is written from the user's evidence, revising their
+  uploaded résumé when there is one. Every line the model writes cites the
+  evidence behind it — the grey note under each line — and a draft that cites
+  nothing, or evidence the user does not own, is rejected.
+* "Their requirements → your evidence": covered, partial or gap for each
+  requirement, decided by the user's scores against the Target's bar, not by
+  the model.
+* Edit any line in place; "Save this version" keeps a new version, and a line
+  the user rewrote is marked as theirs. Saved résumés list every Target
+  written for, and reopen at their latest version.
+* "Revise with {model}": a chat that streams its answer and proposes a
+  revision, applied as a new version only when the user says so.
+* Three templates (Warm, Plain, Brief) and export to a white PDF with a
+  short-lived download link (ADR 0007).
+* Not yet: the interview-report prompt two weeks after tailoring.
 
 # Phase 3
 ## Support OAuth login

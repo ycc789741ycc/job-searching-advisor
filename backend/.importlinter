@@ -24,6 +24,7 @@ source_modules =
     modules.assessment
     modules.target
     modules.gapplan
+    modules.resume
 forbidden_modules =
     modules.identity.infra
     modules.identity.api
@@ -43,6 +44,9 @@ forbidden_modules =
     modules.gapplan.infra
     modules.gapplan.api
     modules.gapplan.jobs
+    modules.resume.infra
+    modules.resume.api
+    modules.resume.jobs
 # Direct imports only. Reaching another module's internals *through* its
 # public.py is the design; typing `modules.rolemap.infra.models` is not.
 allow_indirect_imports = True
@@ -85,6 +89,7 @@ forbidden_modules =
     modules.assessment
     modules.target
     modules.gapplan
+    modules.resume
     domain
     modules.market.infra
     modules.market.api
@@ -104,6 +109,7 @@ source_modules =
     modules.assessment
     modules.target
     modules.gapplan
+    modules.resume
     crawler
     app
 forbidden_modules =
@@ -124,6 +130,7 @@ source_modules =
     modules.assessment
     modules.target
     modules.gapplan
+    modules.resume
     crawler
 forbidden_modules =
     kernel.ai_gateway.providers
@@ -173,6 +180,7 @@ modules =
     domain.assessment
     domain.target
     domain.gapplan
+    domain.resume
 
 # Rule 9: a module uses only its own domain package. Another module's rules are
 # reached through that module's public.py (rule 1), never by importing its
@@ -189,6 +197,7 @@ forbidden_modules =
     domain.assessment
     domain.target
     domain.gapplan
+    domain.resume
 allow_indirect_imports = True
 
 [importlinter:contract:profile-own-domain-only]
@@ -203,6 +212,7 @@ forbidden_modules =
     domain.assessment
     domain.target
     domain.gapplan
+    domain.resume
 allow_indirect_imports = True
 
 [importlinter:contract:market-own-domain-only]
@@ -217,6 +227,7 @@ forbidden_modules =
     domain.assessment
     domain.target
     domain.gapplan
+    domain.resume
 allow_indirect_imports = True
 
 [importlinter:contract:rolemap-own-domain-only]
@@ -231,6 +242,7 @@ forbidden_modules =
     domain.assessment
     domain.target
     domain.gapplan
+    domain.resume
 allow_indirect_imports = True
 
 [importlinter:contract:assessment-own-domain-only]
@@ -245,6 +257,7 @@ forbidden_modules =
     domain.rolemap
     domain.target
     domain.gapplan
+    domain.resume
 allow_indirect_imports = True
 
 [importlinter:contract:target-own-domain-only]
@@ -259,6 +272,7 @@ forbidden_modules =
     domain.rolemap
     domain.assessment
     domain.gapplan
+    domain.resume
 allow_indirect_imports = True
 
 [importlinter:contract:gapplan-own-domain-only]
@@ -273,4 +287,20 @@ forbidden_modules =
     domain.rolemap
     domain.assessment
     domain.target
+    domain.resume
+allow_indirect_imports = True
+
+[importlinter:contract:resume-own-domain-only]
+name = modules.resume imports only domain.resume
+type = forbidden
+source_modules =
+    modules.resume
+forbidden_modules =
+    domain.identity
+    domain.profile
+    domain.market
+    domain.rolemap
+    domain.assessment
+    domain.target
+    domain.gapplan
 allow_indirect_imports = True

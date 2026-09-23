@@ -37,6 +37,7 @@ def _register(app: App) -> None:
     from modules.gapplan import jobs as gapplan_jobs
     from modules.market import jobs as market_jobs
     from modules.profile import jobs as profile_jobs
+    from modules.resume import jobs as resume_jobs
     from modules.rolemap import jobs as rolemap_jobs
 
     def deps() -> Container:
@@ -79,3 +80,11 @@ def _register(app: App) -> None:
     @app.task(name="gapplan.draft", queue=str(Queue.AI))
     async def draft_plan(owner_id: str, plan_id: str) -> None:
         await gapplan_jobs.draft(deps(), owner_id=owner_id, plan_id=plan_id)
+
+    @app.task(name="resume.generate", queue=str(Queue.AI))
+    async def generate_resume(owner_id: str, resume_id: str) -> None:
+        await resume_jobs.generate(deps(), owner_id=owner_id, resume_id=resume_id)
+
+    @app.task(name="resume.export", queue=str(Queue.DOCS))
+    async def export_resume(owner_id: str, export_id: str) -> None:
+        await resume_jobs.export(deps(), owner_id=owner_id, export_id=export_id)

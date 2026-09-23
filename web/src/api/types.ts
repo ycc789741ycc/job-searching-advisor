@@ -253,3 +253,92 @@ export interface PlanEstimate extends CostEstimate {
   /** The pasted JD still has to be read and scored; that is included. */
   includes_scoring?: boolean;
 }
+
+export type ResumeTemplate = "warm" | "plain" | "brief";
+
+export interface ResumeOptions {
+  metrics: boolean;
+  reorder: boolean;
+  trim: boolean;
+}
+
+export interface ResumeBullet {
+  text: string;
+  evidence_ids: string[];
+  /** "written" by the model (always cited) or "yours" (typed by the user). */
+  origin: "written" | "yours";
+  /** The Target requirement this line answers, if any. */
+  answers: string | null;
+}
+
+export interface ResumeContent {
+  name: string;
+  headline: string;
+  contact: string;
+  summary: string;
+  experience: {
+    title: string;
+    org: string;
+    when: string;
+    bullets: ResumeBullet[];
+  }[];
+  skills: string[];
+}
+
+export interface ResumeSummary {
+  id: string;
+  target: { kind: TargetKind; id: string };
+  label: string;
+  status: PlanStatus;
+  error: { code: string; message: string } | null;
+  latest_version: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ResumeVersion {
+  id: string;
+  number: number;
+  label: string;
+  source: "generated" | "manual" | "chat";
+  model_id: string | null;
+  created_at: string;
+}
+
+export interface TailoredResume extends ResumeSummary {
+  template: ResumeTemplate;
+  options: ResumeOptions;
+  snapshot: {
+    title: string;
+    company: string;
+    role_name: string | null;
+    fit: number | null;
+    basis: "role" | "posting";
+  } | null;
+  coverage: {
+    requirement: string;
+    verdict: "covered" | "partial" | "gap";
+    evidence: { id: string; reference: string; fact: string }[];
+  }[];
+  version: ResumeVersion | null;
+  content: ResumeContent | null;
+  evidence: Record<string, { reference: string; fact: string }>;
+  versions: ResumeVersion[];
+  revisions: {
+    id: string;
+    request: string;
+    reply: string;
+    has_proposal: boolean;
+    applied_version_id: string | null;
+    created_at: string;
+  }[];
+}
+
+export interface ResumeExport {
+  id: string;
+  version_id: string;
+  template: ResumeTemplate;
+  status: "rendering" | "ready" | "failed";
+  error: { code: string; message: string } | null;
+  download_url: string | null;
+}
