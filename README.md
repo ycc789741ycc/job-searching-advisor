@@ -1,12 +1,30 @@
 # Job Searching Advisor
 
-Turns the work you have actually done — GitHub, Jira, your résumé — into a
-picture of where you stand (a **skill radar**) and what is worth aiming at (a
-**role map** of real openings), then plans the route to a chosen role and
-writes a résumé for it. Every claim traces back to evidence from your own work.
+**Know where you stand, see which real jobs fit you, and close the gap to the
+one you want.** Everything is built from the work you have actually done.
 
-All AI runs on **your own LLM provider key**. The platform itself only does the
-work that needs no model: crawling, parsing, embedding and clustering.
+## The problem it solves
+
+Looking for your next job usually means guessing. You don't know how your skills
+compare to what the market is hiring for, which roles you could realistically
+land, what it would take to reach the one you want, or how to present your work
+for it. Your résumé undersells you, and advice from job boards is generic.
+
+Job Searching Advisor answers those questions from evidence: your GitHub, your
+Jira and your résumé, measured against real job openings.
+
+```mermaid
+flowchart LR
+  WORK["📂 Your real work<br/>GitHub · Jira · résumé"] --> STAND["📊 Where you stand<br/>your skill strengths"]
+  JOBS["🌐 Real job openings"] --> FIT["🎯 Which roles fit you<br/>fit · hiring bar · salary"]
+  STAND --> FIT
+  FIT -->|"you pick a target"| PLAN["🧭 How to get there<br/>a plan to close the gaps"]
+  FIT -->|"you pick a target"| CV["📝 How to apply<br/>a résumé tailored to the role"]
+  PLAN -. "new work makes you stronger" .-> WORK
+```
+
+Every claim it makes cites your own work, and all AI runs on **your own LLM
+key**.
 
 ## What it does
 
@@ -23,71 +41,7 @@ Not built yet: suggesting a successor Target when a role splits, interview
 reports (the hiring bar is estimated for now), email verification and password
 reset, and linking or unlinking Google from Settings. See [`docs/plan.md`](docs/plan.md).
 
-## Concept
-
-```mermaid
-flowchart LR
-  subgraph Sources["Your real work"]
-    GH[GitHub]
-    JI[Jira]
-    RS["Résumé upload"]
-  end
-
-  subgraph Market["Job market: shared, no AI"]
-    ATS["Public ATS boards and JSON-LD career pages"] -->|weekly crawl| JP[Job postings]
-    PJD["Pasted JDs (private to you)"] --> JP
-  end
-
-  Sources -->|"sync, no AI"| EV[Evidence]
-  EV --> CP[Career profile]
-  CP --> AN{{Analyzer}}
-  AN -. "evidence too thin" .-> FQ[Follow-up questions]
-  FQ -. answers .-> EV
-  AN --> SA["Skill assessment<br/>(radar chart)"]
-  JP -->|"embed and cluster, top k"| RO[Roles]
-  SA --> FIT["Role fit<br/>(bubble chart: role map)"]
-  RO --> FIT
-  FIT -->|you pick| TG((Target))
-  TG --> GP["Gap plan<br/>milestones and tasks"]
-  TG --> RA["Tailored résumé<br/>versions, chat, PDF"]
-  EV -. "cited by" .-> RA
-  GP -. "finished work shows up in the next sync" .-> Sources
-
-  KEY[["Your LLM key<br/>via the AI gateway"]] -. runs .-> AN & FIT & GP & RA
-```
-
-The ideas that hold it together:
-
-- **Evidence is the unit of truth.** AI output is untrusted: every evidence id
-  it cites must exist in *your* profile, or the whole response is rejected. That
-  is the guard against invented claims.
-- **Ingestion and crawling are AI-free.** Syncing a source or crawling a job
-  board can never spend your key, and hostile HTML never reaches a prompt from
-  there.
-- **A Target is what you aim at.** A gap plan and a tailored résumé both point
-  at a Target, which is a frozen snapshot of that opening's requirements.
-- **The loop closes on real work.** Tasks in a plan are meant to produce real
-  commits and tickets. The next sync turns them into evidence, and the
-  assessment moves.
-
-The full model, with its bounded contexts, domain events and glossary, is in
-[`docs/domain_model_review.md`](docs/domain_model_review.md).
-
-## Architecture at a glance
-
-```mermaid
-flowchart LR
-  SPA["web: React + Vite SPA"] -->|"JWT, refresh cookie"| API["api: FastAPI modular monolith"]
-  API --> DB[("Postgres: a schema per module, plus the job queue")]
-  W["worker: queues ai, sync, docs"] --> DB
-  C["crawler: no secrets, no user data"] -->|"market schema and outbox only"| DB
-  API --> OBJ[("Object storage (MinIO): résumés, exports")]
-  W --> OBJ
-  API -->|"streaming résumé chat"| LLM["Your LLM provider"]
-  W -->|"AI jobs"| LLM
-  W --> SRC["GitHub and Jira"]
-  C --> BOARDS["Public job boards"]
-```
+## How it is built
 
 Design choices that are deliberate:
 
