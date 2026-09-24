@@ -204,3 +204,63 @@ describe("field accessibility", () => {
     expect(password).toHaveAccessibleDescription(/At least 12 characters/);
   });
 });
+
+describe("signing in with Google", () => {
+  function methods(google: boolean) {
+    fetchMock.mockImplementation(async (input: unknown) => {
+      const url = String(input);
+      if (url.endsWith("/auth/refresh")) {
+        return jsonResponse(
+          { error: { code: "unauthenticated", message: "no" } },
+          401,
+        );
+      }
+      if (url.endsWith("/auth/methods")) {
+        return jsonResponse({ password: true, google });
+      }
+      return jsonResponse(sessionBody("maya@example.com"));
+    });
+  }
+
+  afterEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("offers Google as a link to the API when the server has it", async () => {
+    methods(true);
+    renderScreen();
+
+    const link = await screen.findByRole("link", {
+      name: "Continue with Google",
+    });
+    expect(link).toHaveAttribute(
+      "href",
+      "http://api.test/api/v1/auth/google/start",
+    );
+  });
+
+  it("does not offer Google when the server is not set up for it", async () => {
+    methods(false);
+    renderScreen();
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([url]) =>
+          String(url).endsWith("/auth/methods"),
+        ),
+      ).toBe(true),
+    );
+    expect(
+      screen.queryByRole("link", { name: "Continue with Google" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says why a Google sign-in did not finish, and clears it from the URL", async () => {
+    methods(true);
+    window.history.replaceState(null, "", "/?sign_in_error=declined");
+    renderScreen();
+
+    expect(await screen.findByText(/cancelled/)).toBeInTheDocument();
+    expect(window.location.search).toBe("");
+  });
+});

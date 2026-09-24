@@ -199,5 +199,16 @@ queue with WeasyPrint (ADR 0007). Its routes are `/tailored-resumes` —
 Not yet: suggesting a successor Target when a Role splits (rolemap does not
 emit `RoleSplitOrMerged` yet), and the interview-report prompt after a résumé
 is tailored. The hiring bar is `estimated` only — `InterviewReport`
-arrives with the reporting flow later. Google login is Phase 3, as our own
-OAuth exchange that issues our own session token.
+arrives with the reporting flow later.
+
+## Phase 3 scope
+
+In: sign in with Google — our own OpenID Connect exchange (PKCE, state, nonce)
+whose callback lands on the api and ends in our own session, the same refresh
+cookie a password sign-in sets. Outside identities live in
+`identity.federated_identity`, keyed on Google's `sub`. A Google-verified
+address takes over a password account at the same address and removes its
+password and sessions, because our own addresses are unverified (ADR 0008).
+Optional: blank `GOOGLE_OAUTH_CLIENT_ID` turns it off.
+
+Not yet: unlinking Google, or linking it from Settings.

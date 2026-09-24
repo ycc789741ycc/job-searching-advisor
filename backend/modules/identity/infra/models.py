@@ -29,9 +29,9 @@ class Account(Base, TimestampMixin):
     the access tokens we issue.
 
     ``email`` is the identifier someone signs in with, stored normalised so
-    there is one account per address however it was typed. ``auth_subject``
-    stays for a later external identity (Google in Phase 2) and is null for an
-    account that only has a password.
+    there is one account per address however it was typed. Outside identities
+    such as Google live in ``federated_identity``, not here. ``auth_subject`` is
+    a leftover of the hosted provider this replaced and is left null (ADR 0008).
     """
 
     __tablename__ = "account"
@@ -71,6 +71,34 @@ class PasswordCredential(Base, OwnedMixin, TimestampMixin):
     failed_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     last_failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     password_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class FederatedIdentity(Base, OwnedMixin, TimestampMixin):
+    """An outside identity — a Google account — linked to one of ours.
+
+    Beside ``password_credential`` rather than a column on ``account``, for the
+    same reason that one is: another sign-in method is another row, and an
+    account may have a password, a Google identity, or both.
+
+    ``subject`` is the provider's stable id for the person. The address is not
+    the key, because a Google account can change its address and keep its
+    subject. ``email_at_link`` records what Google verified when it was linked.
+    """
+
+    __tablename__ = "federated_identity"
+    __table_args__ = (
+        UniqueConstraint("provider", "subject", name="uq_federated_identity_provider_subject"),
+        UniqueConstraint("owner_id", "provider", name="uq_federated_identity_owner_provider"),
+        {"schema": "identity"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("identity.account.id", ondelete="CASCADE"), nullable=False
+    )
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    email_at_link: Mapped[str] = mapped_column(String(320), nullable=False)
 
 
 class RefreshToken(Base, OwnedMixin):

@@ -1,4 +1,4 @@
-"""Registration, sign-in, rotation and lockout, against a real database."""
+"""Registration, sign-in, rotation, lockout and Google, against a real database."""
 
 from __future__ import annotations
 
@@ -9,7 +9,12 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 
-from domain.identity import MAX_FAILED_ATTEMPTS
+from domain.identity import (
+    MAX_FAILED_ATTEMPTS,
+    FederatedSignInRejectedError,
+    IdTokenClaims,
+    SignInFailure,
+)
 from kernel.auth import ALGORITHM, StaticSecretResolver, TokenVerifier
 from kernel.db import Database
 from kernel.errors import ConflictError, RateLimitedError, UnauthenticatedError, ValidationError
@@ -258,3 +263,121 @@ async def test_signing_out_everywhere_ends_every_session(auth: AuthService, addr
     for session in (first, second):
         with pytest.raises(UnauthenticatedError):
             await auth.refresh(refresh_token=session.refresh_token)
+
+
+# -- signing in with Google ---------------------------------------------------
+#
+# The exchange with Google is covered in the unit tests. From here on it is our
+# own database deciding which account a verified identity lands in.
+
+
+def _google(address: str, subject: str | None = None) -> IdTokenClaims:
+    return IdTokenClaims(
+        subject=subject or f"google-{uuid.uuid4().hex}",
+        email=address,
+        email_verified=True,
+        nonce="checked-before-this-point",
+    )
+
+
+async def _count(database: Database, sql: str, **params: object) -> int:
+    async with database.shared() as session:
+        return int((await session.execute(text(sql), params)).scalar_one())
+
+
+async def test_a_new_google_address_gets_an_account_a_budget_and_a_session(
+    auth: AuthService, verifier: TokenVerifier, database: Database, address: str
+) -> None:
+    session = await auth.sign_in_with_google(_google(address))
+
+    assert session.email == address
+    assert verifier.verify(session.access_token).subject == str(session.account_id)
+    async with database.for_user(session.account_id) as scoped:
+        budget = await scoped.execute(
+            text("SELECT monthly_cap_usd FROM identity.ai_usage_budget WHERE owner_id = :o"),
+            {"o": session.account_id},
+        )
+        assert budget.scalar_one() == Decimal("20")
+    # No password: this account signs in with Google only.
+    assert (
+        await _count(
+            database,
+            "SELECT count(*) FROM identity.password_credential WHERE owner_id = :o",
+            o=session.account_id,
+        )
+        == 0
+    )
+    # The refresh cookie it would set works like any other.
+    renewed = await auth.refresh(refresh_token=session.refresh_token)
+    assert renewed.account_id == session.account_id
+
+
+async def test_the_same_google_identity_returns_to_the_same_account(
+    auth: AuthService, address: str
+) -> None:
+    claims = _google(address)
+    first = await auth.sign_in_with_google(claims)
+    second = await auth.sign_in_with_google(claims)
+    assert second.account_id == first.account_id
+
+
+async def test_a_google_only_account_cannot_be_entered_with_a_password(
+    auth: AuthService, address: str
+) -> None:
+    await auth.sign_in_with_google(_google(address))
+    with pytest.raises(UnauthenticatedError, match="do not match"):
+        await auth.sign_in(email=address, password=PASSWORD)
+
+
+async def test_google_takes_over_a_password_account_at_its_address(
+    auth: AuthService, database: Database, address: str
+) -> None:
+    """Our addresses were never verified. Once Google proves who owns one, the
+    password whoever registered it set stops working, and so do its sessions."""
+    squatter = await auth.register(email=address, password=PASSWORD)
+
+    owner = await auth.sign_in_with_google(_google(address.upper()))
+
+    assert owner.account_id == squatter.account_id
+    assert (
+        await _count(
+            database,
+            "SELECT count(*) FROM identity.password_credential WHERE owner_id = :o",
+            o=owner.account_id,
+        )
+        == 0
+    )
+    with pytest.raises(UnauthenticatedError):
+        await auth.refresh(refresh_token=squatter.refresh_token)
+    with pytest.raises(UnauthenticatedError, match="do not match"):
+        await auth.sign_in(email=address, password=PASSWORD)
+    # The owner's own session is untouched by the revocation.
+    assert (await auth.refresh(refresh_token=owner.refresh_token)).account_id == owner.account_id
+
+
+async def test_an_address_linked_to_one_google_identity_refuses_another(
+    auth: AuthService, address: str
+) -> None:
+    await auth.sign_in_with_google(_google(address, subject="google-first"))
+    with pytest.raises(FederatedSignInRejectedError) as caught:
+        await auth.sign_in_with_google(_google(address, subject="google-second"))
+    assert caught.value.reason is SignInFailure.ACCOUNT_CONFLICT
+
+
+async def test_a_linked_identity_is_invisible_to_another_user(
+    auth: AuthService, database: Database, address: str, other_account: uuid.UUID
+) -> None:
+    session = await auth.sign_in_with_google(_google(address))
+
+    async with database.for_user(other_account) as scoped:
+        seen = await scoped.execute(
+            text("SELECT count(*) FROM identity.federated_identity WHERE owner_id = :o"),
+            {"o": session.account_id},
+        )
+        assert seen.scalar_one() == 0
+    async with database.for_user(session.account_id) as scoped:
+        own = await scoped.execute(
+            text("SELECT count(*) FROM identity.federated_identity WHERE owner_id = :o"),
+            {"o": session.account_id},
+        )
+        assert own.scalar_one() == 1

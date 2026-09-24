@@ -34,6 +34,8 @@ from kernel.errors import (
 from kernel.fetch import assert_public_url
 from kernel.outbox import EventName, emit
 from modules.identity.auth import AuthService, Session
+from modules.identity.google import GoogleSignIn, GoogleStart
+from modules.identity.infra.google import GoogleEndpoints, GoogleOidc
 from modules.identity.infra.models import (
     Account,
     AiUsageBudget,
@@ -52,6 +54,10 @@ __all__ = [
     "AuthService",
     "BudgetView",
     "CredentialView",
+    "GoogleEndpoints",
+    "GoogleOidc",
+    "GoogleSignIn",
+    "GoogleStart",
     "IdentityService",
     "Provider",
     "Session",

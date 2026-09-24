@@ -21,6 +21,7 @@ from modules.identity.infra.models import (  # noqa: F401
     Account,
     AiUsageBudget,
     AiUsageLedger,
+    FederatedIdentity,
     PasswordCredential,
     ProviderCredential,
     RefreshToken,

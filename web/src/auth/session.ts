@@ -94,3 +94,27 @@ export async function refresh(): Promise<Session> {
 export async function signOut(): Promise<void> {
   await post("/sign-out");
 }
+
+export interface SignInMethods {
+  password: boolean;
+  google: boolean;
+}
+
+/** Which ways in to offer. Google is on only when the server is set up for it. */
+export async function signInMethods(): Promise<SignInMethods> {
+  const response = await fetch(
+    `${loadConfig().apiBaseUrl}/api/v1/auth/methods`,
+  );
+  if (!response.ok) return { password: true, google: false };
+  const payload = (await response.json()) as Partial<SignInMethods> | null;
+  return { password: true, google: payload?.google === true };
+}
+
+/**
+ * Where "Continue with Google" goes. A full-page navigation, not a fetch: the
+ * API sends the browser on to Google and, afterwards, back to this app with
+ * the refresh cookie set, which the refresh on load then picks up.
+ */
+export function googleStartUrl(): string {
+  return `${loadConfig().apiBaseUrl}/api/v1/auth/google/start`;
+}

@@ -58,7 +58,7 @@ The worker queues share one image for the MVP. Split them later by giving each q
 | Documents | WeasyPrint (PDF export, [ADR 0007](decisions/0007-render-resume-pdfs-with-weasyprint.md)), pypdf / python-docx (parsing) | No browser in the image; the export fetches nothing |
 | Local ML | sentence-transformers + HDBSCAN | Works with every LLM provider, including Anthropic, which has no embeddings API |
 | Client | React + Vite, `openapi-typescript` client generated from FastAPI's OpenAPI | The API contract is the client/server boundary, checked in CI |
-| Auth | Own sign-in in `identity`: Argon2id, 15-minute HS256 access tokens, rotating refresh cookie | No external account needed to run the app; see [ADR 0001](decisions/0001-run-our-own-email-password-sign-in.md) |
+| Auth | Own sign-in in `identity`: Argon2id, 15-minute HS256 access tokens, rotating refresh cookie; optional Google through our own OpenID Connect exchange | No external account needed to run the app; see [ADR 0001](decisions/0001-run-our-own-email-password-sign-in.md) and [ADR 0008](decisions/0008-sign-in-with-google-by-our-own-oidc-exchange.md) |
 
 ## 2. Code boundaries inside the monolith
 
@@ -169,7 +169,9 @@ web/                        # TS client
 | User's LLM API key (`ProviderCredential`) | `identity.provider_credential`, envelope-encrypted | `kernel.ai_gateway` in `api` and `worker` | `web`, `crawler`, logs |
 | Connector OAuth tokens (GitHub, Jira, LinkedIn) | `profile.source_connection`, envelope-encrypted | `profile.infra.connectors` in `worker` (`sync` queue) | `web`, `api` handlers, `crawler`, logs |
 | Master encryption key | PaaS secret on `api` and `worker` only | `kernel.crypto` | `crawler` |
-| Auth provider signing keys | Auth provider (API fetches public JWKS) | n/a | Everything else |
+| Session signing secret (`AUTH_JWT_SECRET`) | api environment | `kernel.auth`, and the Google sign-in attempt cookie's HMAC | Everything else |
+| Google OAuth client secret | api environment | `modules.identity.infra.google`, for the code exchange only | `worker`, `crawler`, `web`, logs |
+| Google's ID-token signing keys | Google (api fetches the public JWKS) | n/a | Everything else |
 
 - **Envelope encryption:** each record has its own data key (AES-GCM), wrapped by the master key. Moving to a cloud KMS (AWS/GCP) later only replaces the master-key wrapper; the schema doesn't change.
 - **Write-only API:** credentials can be set, tested, replaced or deleted. Reads return only provider, model and the last 4 characters.
@@ -187,7 +189,7 @@ Crawled pages, uploaded PDF/DOCX files, pasted JDs, repository and ticket conten
 - **SSRF protection** (`kernel.fetch`):
   - Block private, loopback, link-local and cloud-metadata addresses, and re-check after every redirect and DNS resolution.
   - Applies to personal-site crawling, to **subscription URLs** (fetched only by the crawler, from a `crawl_source` row with no owner), and to the **user-supplied LLM base URL**. A "Local" model therefore means an endpoint at a public URL the user controls, not one on the server's network.
-- **Auth:** the API verifies JWT signature, issuer, audience and expiry on every request. Login OAuth (Google, via the auth provider) and connector OAuth (handled by `profile`) are separate flows with separate token storage.
+- **Auth:** the API verifies JWT signature, issuer, audience and expiry on every request. Login OAuth (Google, our own exchange in `identity`, stored in `identity.federated_identity`) and connector OAuth (handled by `profile`) are separate flows with separate token storage — they share no code path. Login OAuth keeps no Google token at all: the ID token is verified once and discarded (ADR 0008).
 
 ## 5. AI gateway (`kernel/ai_gateway`)
 The gateway is the only path to an LLM, used by `api` (streaming chat) and `worker` (jobs).

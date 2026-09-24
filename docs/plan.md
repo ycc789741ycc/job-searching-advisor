@@ -73,6 +73,13 @@ later phase — never a market data source.
 
 # Phase 3
 ## Support OAuth login
-* Google — with sign-in now owned in `identity`, this is our own OAuth code
-  exchange that establishes the account and issues *our* session token, not a
-  provider-side toggle.
+* **Done.** Google — our own OpenID Connect code exchange (PKCE, state, nonce)
+  in `identity`, which ends by issuing *our* session: the same access token and
+  rotating refresh cookie as a password sign-in (ADR 0008).
+* A Google address is verified, so an existing password account at the same
+  address is linked, and its password and sessions are removed — our own
+  addresses never were verified, so whoever registered one first must not keep
+  a way in.
+* Optional per deployment: blank `GOOGLE_OAUTH_CLIENT_ID` and the sign-in
+  screen offers email and password only.
+* Not yet: unlinking Google, or linking it from Settings.

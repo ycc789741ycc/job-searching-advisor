@@ -62,6 +62,26 @@ class Settings(BaseSettings):
     # anywhere else.
     auth_cookie_secure: bool = Field(default=True, alias="AUTH_COOKIE_SECURE")
 
+    # --- Login OAuth: Google (api only; optional) ---------------------------
+    # Separate from connector OAuth below: different provider, tokens and
+    # storage. Off unless GOOGLE_OAUTH_CLIENT_ID is set; once it is, every other
+    # value here is required and startup fails without it (ADR 0008).
+    google_oauth_client_id: str | None = Field(default=None, alias="GOOGLE_OAUTH_CLIENT_ID")
+    google_oauth_client_secret: SecretStr | None = Field(
+        default=None, alias="GOOGLE_OAUTH_CLIENT_SECRET"
+    )
+    google_oauth_authorize_url: str | None = Field(default=None, alias="GOOGLE_OAUTH_AUTHORIZE_URL")
+    google_oauth_token_url: str | None = Field(default=None, alias="GOOGLE_OAUTH_TOKEN_URL")
+    google_oauth_jwks_url: str | None = Field(default=None, alias="GOOGLE_OAUTH_JWKS_URL")
+    # Where a browser reaches the API. Google sends the browser back to
+    # {this}/api/v1/auth/google/callback, so it is the API's address, not the
+    # SPA's — unlike OAUTH_REDIRECT_BASE_URL.
+    auth_public_api_base_url: str | None = Field(default=None, alias="AUTH_PUBLIC_API_BASE_URL")
+
+    @property
+    def google_sign_in_enabled(self) -> bool:
+        return bool(self.google_oauth_client_id)
+
     # --- Encryption ---------------------------------------------------------
     # Absent on the crawler by design; anything needing it fails loudly there.
     master_encryption_key: SecretStr | None = Field(default=None, alias="MASTER_ENCRYPTION_KEY")
@@ -172,7 +192,10 @@ class Settings(BaseSettings):
         startup" true without forcing every process to carry every credential
         (docs/technical_boundaries.md section 4).
         """
-        missing = [name for name in _REQUIRED_BY_UNIT[unit] if getattr(self, name) is None]
+        required = _REQUIRED_BY_UNIT[unit]
+        if unit is Unit.API and self.google_sign_in_enabled:
+            required = (*required, *_GOOGLE_SIGN_IN)
+        missing = [name for name in required if getattr(self, name) is None]
         if missing:
             raise MissingSecretError(
                 f"{unit} is missing required configuration: "
@@ -223,6 +246,15 @@ _CONNECTORS = (
     "jira_oauth_base_url",
 )
 
+# Required on the api only when Google sign-in is switched on.
+_GOOGLE_SIGN_IN = (
+    "google_oauth_client_secret",
+    "google_oauth_authorize_url",
+    "google_oauth_token_url",
+    "google_oauth_jwks_url",
+    "auth_public_api_base_url",
+)
+
 _REQUIRED_BY_UNIT: dict[Unit, tuple[str, ...]] = {
     # The api issues and verifies session tokens and starts connector OAuth.
     Unit.API: (*_SHARED_STORAGE, *_CONNECTORS, "auth_jwt_secret"),
@@ -233,7 +265,9 @@ _REQUIRED_BY_UNIT: dict[Unit, tuple[str, ...]] = {
     Unit.CRAWLER: ("crawler_database_url",),
 }
 
-_ENV_NAME: dict[str, str] = {name: name.upper() for name in (*_SHARED_STORAGE, *_CONNECTORS)}
+_ENV_NAME: dict[str, str] = {
+    name: name.upper() for name in (*_SHARED_STORAGE, *_CONNECTORS, *_GOOGLE_SIGN_IN)
+}
 _ENV_NAME.update(
     {
         "auth_jwt_secret": "AUTH_JWT_SECRET",

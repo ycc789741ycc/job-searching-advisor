@@ -131,3 +131,42 @@ def test_confidence_threshold_must_be_a_probability(monkeypatch: pytest.MonkeyPa
     env = dict(MINIMAL_ENV, ASSESSMENT_CONFIDENCE_THRESHOLD="1.5")
     with pytest.raises(PydanticValidationError):
         Settings(**{k.lower(): v for k, v in env.items()})  # type: ignore[arg-type]
+
+
+def test_google_sign_in_is_off_until_a_client_id_is_set(clean_env: None) -> None:
+    settings = get_settings()
+    assert not settings.google_sign_in_enabled
+    settings.require_for(Unit.API)
+
+
+@pytest.mark.parametrize(
+    "missing",
+    [
+        "GOOGLE_OAUTH_CLIENT_SECRET",
+        "GOOGLE_OAUTH_AUTHORIZE_URL",
+        "GOOGLE_OAUTH_TOKEN_URL",
+        "GOOGLE_OAUTH_JWKS_URL",
+        "AUTH_PUBLIC_API_BASE_URL",
+    ],
+)
+def test_switching_google_on_makes_the_rest_of_it_required(
+    clean_env: None, monkeypatch: pytest.MonkeyPatch, missing: str
+) -> None:
+    google = {
+        "GOOGLE_OAUTH_CLIENT_ID": "client.apps.googleusercontent.test",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "secret",
+        "GOOGLE_OAUTH_AUTHORIZE_URL": "https://accounts.google.test/o/oauth2/v2/auth",
+        "GOOGLE_OAUTH_TOKEN_URL": "https://oauth2.google.test/token",
+        "GOOGLE_OAUTH_JWKS_URL": "https://www.google.test/oauth2/v3/certs",
+        "AUTH_PUBLIC_API_BASE_URL": "http://localhost:21470",
+    }
+    for name, value in google.items():
+        if name != missing:
+            monkeypatch.setenv(name, value)
+    get_settings.cache_clear()
+    settings = get_settings()
+    assert settings.google_sign_in_enabled
+    with pytest.raises(MissingSecretError, match=missing):
+        settings.require_for(Unit.API)
+    # The worker never signs anyone in, so it does not need any of it.
+    settings.require_for(Unit.WORKER)
