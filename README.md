@@ -121,8 +121,9 @@ Supporting targets, which are never dependencies of the targets above:
 `migrate`, `format`, `gen-client` (regenerates the TypeScript API client),
 `lock` (regenerates `backend/uv.lock`), `logs`, `stats` (CPU, memory and
 restarts per container, against its limit), `disk-usage` (free disk, volumes,
-the largest tables, buckets) and `clean-up-infra`, which is the only
-destructive one.
+the largest tables, buckets), `clean-up-cache` (deletes tool caches and build
+output, all regenerated on the next run) and `clean-up-infra`, which is the
+only destructive one.
 
 ## Repository layout
 

@@ -66,7 +66,7 @@ endif
 .PHONY: help require-env check-mode require-mode-images build-infra build-app \
         start-infra start-app stop-app stop-infra test-unit test-integration \
         migrate lint typecheck scan format gen-client lock clean-up-infra logs \
-        stats disk-usage
+        stats disk-usage clean-up-cache
 
 help:
 	@echo "Standard targets (build-app, start-app, stop-app take MODE=dev|prod):"
@@ -75,7 +75,7 @@ help:
 	@echo "Gates (their own targets, never folded into a test target):"
 	@echo "  lint typecheck scan"
 	@echo "Supporting targets (never dependencies of the above):"
-	@echo "  migrate format gen-client lock logs stats disk-usage clean-up-infra"
+	@echo "  migrate format gen-client lock logs stats disk-usage clean-up-cache clean-up-infra"
 
 require-env:
 	@test -f $(ENV_FILE) || { \
@@ -241,6 +241,29 @@ gen-client: require-env
 lock: require-env
 	@$(MAKE) --no-print-directory require-mode-images MODE=dev
 	$(COMPOSE_DEV) run --rm backend-tools uv lock
+
+# Deletes the tool caches left in the checkout: bytecode, the pytest, mypy,
+# ruff and import-linter caches, downloaded embedding models (.cache/) and the
+# web build output. Everything it removes is regenerated on the next run, and
+# no data or configuration is touched: .env, tmp/, installed dependencies
+# (.venv/, node_modules/) and web/openapi.json stay. Package directories left
+# holding nothing once their bytecode is gone are removed too.
+#
+# Plain find/rm on the host rather than a container: it only deletes files in
+# this checkout, and a container would need the checkout bind-mounted, which is
+# only ever done in compose.dev.yaml.
+CACHE_DIRS := __pycache__ .pytest_cache .mypy_cache .ruff_cache .import_linter_cache .cache
+
+# Never descends into .git, tmp/ or installed dependencies. No -delete here:
+# it implies -depth, and -depth silently disables -prune.
+KEEP_OUT := -name .git -o -name tmp -o -name node_modules -o -name .venv
+
+clean-up-cache:
+	find . -mindepth 1 \( $(KEEP_OUT) \) -prune -o -type d \
+	    \( $(foreach d,$(CACHE_DIRS),-name $(d) -o) -false \) -print -prune -exec rm -rf {} +
+	find . -mindepth 1 \( $(KEEP_OUT) \) -prune -o -type f -name '*.py[cod]' -print -exec rm -f {} +
+	rm -rf web/dist
+	find backend -mindepth 1 -depth -type d -empty -not -path '*/.venv/*' -print -exec rmdir {} \;
 
 # DESTRUCTIVE. Never a dependency of a build, start, stop or test target.
 clean-up-infra: require-env

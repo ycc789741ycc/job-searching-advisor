@@ -94,7 +94,12 @@ host.
 
 Supporting targets, never dependencies of the above: `migrate`, `format`,
 `gen-client`, `lock` (regenerates `backend/uv.lock` after a dependency change),
-`logs`, `stats`, `disk-usage`, and `clean-up-infra` (the only destructive one).
+`logs`, `stats`, `disk-usage`, `clean-up-cache`, and `clean-up-infra` (the only
+destructive one).
+
+- `clean-up-cache` deletes bytecode, the pytest/mypy/ruff/import-linter caches,
+  downloaded models in `.cache/` and `web/dist`. It never touches `.env`, `tmp/`,
+  `.venv/`, `node_modules/` or `web/openapi.json`.
 
 - `stats` is one snapshot of CPU, memory and processes for every container,
   measured against its limit, plus restart and OOM-kill counts. `disk-usage`
