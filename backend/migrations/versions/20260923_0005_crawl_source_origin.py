@@ -3,7 +3,7 @@
 ``market.crawl_source.origin`` is ``baseline`` or ``demand`` (domain decision
 15). It never records who asked. Existing rows all came from subscriptions, so
 they are ``demand``. The baseline rows themselves are loaded after migrations
-by ``make migrate`` (``app.seed_baseline``), from a list kept in code.
+by ``make migrate`` (``cli.seed_baseline``), from a list kept in code.
 
 Written to be idempotent: the baseline migration builds tables from the live
 ORM metadata, so on a fresh database the column already exists.

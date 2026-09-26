@@ -1,69 +1,245 @@
-# Module boundaries from docs/technical_boundaries.md section 2, enforced in CI
-# by `make lint`. It lives here so it ships inside the tools image and the gate
-# mounts nothing from the host.
+# Package boundaries from docs/technical_boundaries.md section 2 and
+# docs/decisions/0009, enforced in CI by `make lint`. It lives here so it ships
+# inside the tools image and the gate mounts nothing from the host.
 # A violation here is a design defect, not a style nit.
 
 [importlinter]
 root_packages =
-    app
-    kernel
-    domain
-    modules
+    api
+    worker
     crawler
+    cli
+    wiring
+    kernel
+    advisor
 include_external_packages = True
 
-# Rule 1: a module imports another module ONLY through its public.py.
-[importlinter:contract:module-public-surface]
-name = Modules talk to each other only through public.py
+# Rule 1: a component's __init__ is its only public API. Nothing outside the
+# component — another component, a deployable, the composition root or the
+# kernel — imports any of its `_`-prefixed modules. One contract per component,
+# so each names exactly what is private to it.
+#
+# Direct imports only. Reaching a component's internals *through* its
+# __init__ is the design; typing `advisor.rolemap._infra.models` is not.
+
+[importlinter:contract:identity-public-surface]
+name = Only advisor.identity itself is importable from outside the component
 type = forbidden
 source_modules =
-    modules.identity
-    modules.profile
-    modules.market
-    modules.rolemap
-    modules.assessment
-    modules.target
-    modules.gapplan
-    modules.resume
+    api
+    worker
+    crawler
+    cli
+    wiring
+    kernel
+    advisor.profile
+    advisor.market
+    advisor.rolemap
+    advisor.assessment
+    advisor.target
+    advisor.gapplan
+    advisor.resume
 forbidden_modules =
-    modules.identity.infra
-    modules.identity.api
-    modules.profile.infra
-    modules.profile.api
-    modules.profile.jobs
-    modules.market.infra
-    modules.market.api
-    modules.market.jobs
-    modules.rolemap.infra
-    modules.rolemap.api
-    modules.rolemap.jobs
-    modules.assessment.infra
-    modules.assessment.api
-    modules.assessment.jobs
-    modules.target.api
-    modules.gapplan.infra
-    modules.gapplan.api
-    modules.gapplan.jobs
-    modules.resume.infra
-    modules.resume.api
-    modules.resume.jobs
-# Direct imports only. Reaching another module's internals *through* its
-# public.py is the design; typing `modules.rolemap.infra.models` is not.
+    advisor.identity._service
+    advisor.identity._domain
+    advisor.identity._infra
+    advisor.identity._auth
+    advisor.identity._google
 allow_indirect_imports = True
 
-# Rule 2: the domain model lives in one top-level domain/ folder, one package
-# per feature (design guideline, backend architecture: domain folder layout).
-# It is pure: no application code, no kernel, no framework.
-[importlinter:contract:pure-domain]
-name = domain/ imports no application code, kernel or framework
+[importlinter:contract:profile-public-surface]
+name = Only advisor.profile itself is importable from outside the component
 type = forbidden
 source_modules =
-    domain
-forbidden_modules =
-    app
-    kernel
-    modules
+    api
+    worker
     crawler
+    cli
+    wiring
+    kernel
+    advisor.identity
+    advisor.market
+    advisor.rolemap
+    advisor.assessment
+    advisor.target
+    advisor.gapplan
+    advisor.resume
+forbidden_modules =
+    advisor.profile._service
+    advisor.profile._domain
+    advisor.profile._infra
+    advisor.profile._jobs
+allow_indirect_imports = True
+
+[importlinter:contract:market-public-surface]
+name = Only advisor.market itself is importable from outside the component
+type = forbidden
+source_modules =
+    api
+    worker
+    crawler
+    cli
+    wiring
+    kernel
+    advisor.identity
+    advisor.profile
+    advisor.rolemap
+    advisor.assessment
+    advisor.target
+    advisor.gapplan
+    advisor.resume
+forbidden_modules =
+    advisor.market._service
+    advisor.market._domain
+    advisor.market._infra
+    advisor.market._jobs
+    advisor.market._baseline
+    advisor.market._crawling
+allow_indirect_imports = True
+
+[importlinter:contract:rolemap-public-surface]
+name = Only advisor.rolemap itself is importable from outside the component
+type = forbidden
+source_modules =
+    api
+    worker
+    crawler
+    cli
+    wiring
+    kernel
+    advisor.identity
+    advisor.profile
+    advisor.market
+    advisor.assessment
+    advisor.target
+    advisor.gapplan
+    advisor.resume
+forbidden_modules =
+    advisor.rolemap._service
+    advisor.rolemap._domain
+    advisor.rolemap._infra
+    advisor.rolemap._jobs
+allow_indirect_imports = True
+
+[importlinter:contract:assessment-public-surface]
+name = Only advisor.assessment itself is importable from outside the component
+type = forbidden
+source_modules =
+    api
+    worker
+    crawler
+    cli
+    wiring
+    kernel
+    advisor.identity
+    advisor.profile
+    advisor.market
+    advisor.rolemap
+    advisor.target
+    advisor.gapplan
+    advisor.resume
+forbidden_modules =
+    advisor.assessment._service
+    advisor.assessment._domain
+    advisor.assessment._infra
+    advisor.assessment._jobs
+allow_indirect_imports = True
+
+[importlinter:contract:target-public-surface]
+name = Only advisor.target itself is importable from outside the component
+type = forbidden
+source_modules =
+    api
+    worker
+    crawler
+    cli
+    wiring
+    kernel
+    advisor.identity
+    advisor.profile
+    advisor.market
+    advisor.rolemap
+    advisor.assessment
+    advisor.gapplan
+    advisor.resume
+forbidden_modules =
+    advisor.target._service
+    advisor.target._domain
+allow_indirect_imports = True
+
+[importlinter:contract:gapplan-public-surface]
+name = Only advisor.gapplan itself is importable from outside the component
+type = forbidden
+source_modules =
+    api
+    worker
+    crawler
+    cli
+    wiring
+    kernel
+    advisor.identity
+    advisor.profile
+    advisor.market
+    advisor.rolemap
+    advisor.assessment
+    advisor.target
+    advisor.resume
+forbidden_modules =
+    advisor.gapplan._service
+    advisor.gapplan._domain
+    advisor.gapplan._infra
+    advisor.gapplan._jobs
+allow_indirect_imports = True
+
+[importlinter:contract:resume-public-surface]
+name = Only advisor.resume itself is importable from outside the component
+type = forbidden
+source_modules =
+    api
+    worker
+    crawler
+    cli
+    wiring
+    kernel
+    advisor.identity
+    advisor.profile
+    advisor.market
+    advisor.rolemap
+    advisor.assessment
+    advisor.target
+    advisor.gapplan
+forbidden_modules =
+    advisor.resume._service
+    advisor.resume._domain
+    advisor.resume._infra
+    advisor.resume._jobs
+allow_indirect_imports = True
+
+# Rule 2: the domain model inside each component is pure: no application
+# code, no kernel, no framework, no I/O. It is the bottom layer of its
+# component and imports nothing else from it.
+[importlinter:contract:pure-domain]
+name = A component's _domain imports no kernel, delivery code or framework
+type = forbidden
+source_modules =
+    advisor.identity._domain
+    advisor.profile._domain
+    advisor.market._domain
+    advisor.rolemap._domain
+    advisor.assessment._domain
+    advisor.target._domain
+    advisor.gapplan._domain
+    advisor.resume._domain
+forbidden_modules =
+    api
+    worker
+    crawler
+    cli
+    wiring
+    kernel
+    advisor.*._service
+    advisor.*._infra
+    advisor.*._jobs
     fastapi
     sqlalchemy
     httpx
@@ -71,9 +247,58 @@ forbidden_modules =
     procrastinate
     alembic
 
-# Rule 3: the crawler is a separate deployable with a narrow surface.
+# Rule 3: domain models stay independent of one another. A concept two
+# components need gets its own component rather than a link between models.
+[importlinter:contract:domains-independent]
+name = Component domain models do not import each other
+type = independence
+modules =
+    advisor.identity._domain
+    advisor.profile._domain
+    advisor.market._domain
+    advisor.rolemap._domain
+    advisor.assessment._domain
+    advisor.target._domain
+    advisor.gapplan._domain
+    advisor.resume._domain
+
+# Rule 4: the application holds no framework or delivery code (design
+# guideline, package by component). Routes live in api/, task registration in
+# wiring/, entrypoints in worker/, crawler/ and cli/.
+[importlinter:contract:application-has-no-delivery-code]
+name = advisor imports no deployable, no composition root and no web or queue framework
+type = forbidden
+source_modules =
+    advisor
+forbidden_modules =
+    api
+    worker
+    crawler
+    cli
+    wiring
+    fastapi
+    starlette
+    uvicorn
+    procrastinate
+
+# Rule 5: components form no cycles. Each layer may use the ones below it;
+# `|` marks siblings that must not use each other.
+[importlinter:contract:components-acyclic]
+name = Components depend on each other in one direction only
+type = layers
+containers =
+    advisor
+layers =
+    gapplan | resume
+    target
+    assessment
+    rolemap
+    identity | profile | market
+
+# Rule 6: the crawler is a separate deployable with a narrow surface: the market
+# component's public API and the kernel pieces it needs, nothing else.
 [importlinter:contract:crawler-surface]
-name = crawler imports only its allowed kernel pieces and market.public
+name = crawler imports only advisor.market, its own wiring and allowed kernel pieces
 type = forbidden
 source_modules =
     crawler
@@ -83,224 +308,101 @@ forbidden_modules =
     kernel.auth
     kernel.storage
     kernel.jobs
-    modules.identity
-    modules.profile
-    modules.rolemap
-    modules.assessment
-    modules.target
-    modules.gapplan
-    modules.resume
-    domain
-    modules.market.infra
-    modules.market.api
-    modules.market.jobs
-# Direct imports only: the crawler goes through modules.market.public, which
-# necessarily sits on top of that module's own domain and infra.
+    api
+    worker
+    cli
+    wiring.container
+    wiring.queue
+    wiring.models
+    advisor.identity
+    advisor.profile
+    advisor.rolemap
+    advisor.assessment
+    advisor.target
+    advisor.gapplan
+    advisor.resume
+    advisor.market._service
+    advisor.market._domain
+    advisor.market._infra
+    advisor.market._jobs
+    advisor.market._baseline
+    advisor.market._crawling
+# Direct imports only: the crawler goes through advisor.market, which
+# necessarily sits on top of that component's own domain and infra.
 allow_indirect_imports = True
 
-# Rule 4: only the AI gateway and the profile connectors may decrypt.
-[importlinter:contract:decrypt-callers]
-name = Only kernel.ai_gateway and profile connectors may import kernel.crypto
+# Rule 7: the crawler process never loads a secret-holding piece, not even
+# indirectly. It holds no secrets by design (technical_boundaries section 4),
+# which is why its wiring lives apart from wiring.container.
+[importlinter:contract:crawler-holds-no-secrets]
+name = crawler never reaches crypto, the AI gateway, auth or object storage
 type = forbidden
 source_modules =
-    modules.identity.api
-    modules.market
-    modules.rolemap
-    modules.assessment
-    modules.target
-    modules.gapplan
-    modules.resume
     crawler
-    app
+forbidden_modules =
+    kernel.crypto
+    kernel.ai_gateway
+    kernel.auth
+    kernel.storage
+
+# Rule 8: only the AI gateway and the profile connectors may decrypt, and
+# identity may encrypt the credential it stores.
+[importlinter:contract:decrypt-callers]
+name = Only kernel.ai_gateway, advisor.identity and advisor.profile may import kernel.crypto
+type = forbidden
+source_modules =
+    api
+    worker
+    crawler
+    cli
+    wiring
+    advisor.market
+    advisor.rolemap
+    advisor.assessment
+    advisor.target
+    advisor.gapplan
+    advisor.resume
 forbidden_modules =
     kernel.crypto
 # Direct imports only: reaching kernel.crypto *through* the gateway is the
 # supported path, and is what the gateway exists for.
 allow_indirect_imports = True
 
-# Rule 5: modules never touch an LLM SDK directly.
+# Rule 9: components never touch an LLM SDK directly.
 [importlinter:contract:no-direct-llm]
-name = Modules reach an LLM only through kernel.ai_gateway
+name = Components reach an LLM only through kernel.ai_gateway
 type = forbidden
 source_modules =
-    modules.identity
-    modules.profile
-    modules.market
-    modules.rolemap
-    modules.assessment
-    modules.target
-    modules.gapplan
-    modules.resume
+    advisor
     crawler
 forbidden_modules =
     kernel.ai_gateway.providers
 # Direct imports only: the gateway itself necessarily imports its adapters, and
-# every module reaches them through it.
+# every component reaches them through it.
 allow_indirect_imports = True
 
-# Rule 6: the kernel is a technical kernel. It knows no domain.
+# Rule 10: the kernel is a technical kernel. It knows no domain and no
+# deployable (docs/decisions/0009 records why it sits outside advisor/).
 [importlinter:contract:kernel-knows-no-domain]
-name = kernel/ never imports a domain module
+name = kernel never imports a component, a deployable or the composition root
 type = forbidden
 source_modules =
     kernel
 forbidden_modules =
-    domain
-    modules
+    advisor
+    api
+    worker
     crawler
-    app
+    cli
+    wiring
 
-# Rule 7: ingestion is deterministic (domain decision 18). A sync must never
+# Rule 11: ingestion is deterministic (domain decision 18). A sync must never
 # spend the user's key, and the most hostile input — repositories, tickets,
-# uploaded files — never reaches a prompt from here.
+# uploaded files — never reaches a prompt from here. Indirect imports count.
 [importlinter:contract:profile-no-ai]
-name = profile never reaches the AI gateway
+name = advisor.profile never reaches the AI gateway
 type = forbidden
 source_modules =
-    modules.profile
+    advisor.profile
 forbidden_modules =
     kernel.ai_gateway
-# Indirect imports count, except the router's two edges into the composition
-# root, which wires every module together; that is wiring, not ingestion.
-ignore_imports =
-    modules.profile.api -> app.dependencies
-    modules.profile.api -> app.queue
-
-# Rule 8: domain feature packages stay independent of one another. Nothing
-# crosses between them today; a concept two features need gets its own feature
-# package (the guideline's `domain/money/` case) rather than a link.
-[importlinter:contract:domain-features-independent]
-name = domain feature packages do not import each other
-type = independence
-modules =
-    domain.identity
-    domain.profile
-    domain.market
-    domain.rolemap
-    domain.assessment
-    domain.target
-    domain.gapplan
-    domain.resume
-
-# Rule 9: a module uses only its own domain package. Another module's rules are
-# reached through that module's public.py (rule 1), never by importing its
-# domain package directly.
-[importlinter:contract:identity-own-domain-only]
-name = modules.identity imports only domain.identity
-type = forbidden
-source_modules =
-    modules.identity
-forbidden_modules =
-    domain.profile
-    domain.market
-    domain.rolemap
-    domain.assessment
-    domain.target
-    domain.gapplan
-    domain.resume
-allow_indirect_imports = True
-
-[importlinter:contract:profile-own-domain-only]
-name = modules.profile imports only domain.profile
-type = forbidden
-source_modules =
-    modules.profile
-forbidden_modules =
-    domain.identity
-    domain.market
-    domain.rolemap
-    domain.assessment
-    domain.target
-    domain.gapplan
-    domain.resume
-allow_indirect_imports = True
-
-[importlinter:contract:market-own-domain-only]
-name = modules.market imports only domain.market
-type = forbidden
-source_modules =
-    modules.market
-forbidden_modules =
-    domain.identity
-    domain.profile
-    domain.rolemap
-    domain.assessment
-    domain.target
-    domain.gapplan
-    domain.resume
-allow_indirect_imports = True
-
-[importlinter:contract:rolemap-own-domain-only]
-name = modules.rolemap imports only domain.rolemap
-type = forbidden
-source_modules =
-    modules.rolemap
-forbidden_modules =
-    domain.identity
-    domain.profile
-    domain.market
-    domain.assessment
-    domain.target
-    domain.gapplan
-    domain.resume
-allow_indirect_imports = True
-
-[importlinter:contract:assessment-own-domain-only]
-name = modules.assessment imports only domain.assessment
-type = forbidden
-source_modules =
-    modules.assessment
-forbidden_modules =
-    domain.identity
-    domain.profile
-    domain.market
-    domain.rolemap
-    domain.target
-    domain.gapplan
-    domain.resume
-allow_indirect_imports = True
-
-[importlinter:contract:target-own-domain-only]
-name = modules.target imports only domain.target
-type = forbidden
-source_modules =
-    modules.target
-forbidden_modules =
-    domain.identity
-    domain.profile
-    domain.market
-    domain.rolemap
-    domain.assessment
-    domain.gapplan
-    domain.resume
-allow_indirect_imports = True
-
-[importlinter:contract:gapplan-own-domain-only]
-name = modules.gapplan imports only domain.gapplan
-type = forbidden
-source_modules =
-    modules.gapplan
-forbidden_modules =
-    domain.identity
-    domain.profile
-    domain.market
-    domain.rolemap
-    domain.assessment
-    domain.target
-    domain.resume
-allow_indirect_imports = True
-
-[importlinter:contract:resume-own-domain-only]
-name = modules.resume imports only domain.resume
-type = forbidden
-source_modules =
-    modules.resume
-forbidden_modules =
-    domain.identity
-    domain.profile
-    domain.market
-    domain.rolemap
-    domain.assessment
-    domain.target
-    domain.gapplan
-allow_indirect_imports = True

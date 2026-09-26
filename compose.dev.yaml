@@ -23,7 +23,7 @@ services:
     <<: *backend-dev
     command:
       - uvicorn
-      - app.api_main:app
+      - api.main:app
       - --host
       - "0.0.0.0"
       - --port
@@ -38,7 +38,7 @@ services:
     <<: *backend-dev
     # Restarts the worker when Python source changes. Ships with
     # uvicorn[standard], so nothing is added to the image for it.
-    command: ["watchfiles", "--filter", "python", "python -m app.worker_main", "/app"]
+    command: ["watchfiles", "--filter", "python", "python -m worker.main", "/app"]
     volumes:
       - ./backend:/app:ro
 

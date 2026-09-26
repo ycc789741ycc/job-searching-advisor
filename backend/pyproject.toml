@@ -74,7 +74,7 @@ explicit = true
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["."]
+src = ["src", "."]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "S", "ASYNC", "RUF"]
@@ -85,8 +85,7 @@ ignore = ["S101"]  # assert is how pytest asserts
 # queries from table names that are our own constants.
 "tests/**" = ["S104", "S105", "S106", "S608"]
 # FastAPI's dependency and upload declarations are call-in-default by design.
-"modules/*/api.py" = ["B008"]
-"app/dependencies.py" = ["B008"]
+"src/api/**" = ["B008"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -94,6 +93,9 @@ strict = true
 warn_unreachable = true
 plugins = ["pydantic.mypy"]
 exclude = "^migrations/versions/"
+# Source is under src/, tests and migrations at the backend root.
+mypy_path = ["src", "."]
+explicit_package_bases = true
 
 [[tool.mypy.overrides]]
 module = ["pgvector.*", "sentence_transformers.*", "sklearn.*", "procrastinate.*", "weasyprint.*"]
@@ -110,7 +112,7 @@ disallow_untyped_calls = false
 warn_return_any = false
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = ["src", "."]
 # Outside the source tree, so a test run never writes into /app.
 cache_dir = "/tmp/pytest_cache"
 asyncio_mode = "auto"

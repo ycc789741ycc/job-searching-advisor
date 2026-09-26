@@ -10,7 +10,7 @@ import os
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.models import metadata
+from wiring.models import metadata
 
 config = context.config
 
