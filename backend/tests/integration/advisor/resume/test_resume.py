@@ -30,7 +30,7 @@ from advisor.resume import (
     RevisionText,
     Template,
 )
-from advisor.rolemap import RoleMapService
+from advisor.rolemap import create_rolemap_service
 from advisor.target import TargetKind, TargetRef, TargetService
 from kernel.ai_gateway import AiGateway
 from kernel.ai_gateway.providers import REGISTRY, Completion, Request
@@ -117,7 +117,7 @@ async def world(
     gateway = AiGateway(settings=settings, credentials=identity, budget=identity)
     market = create_market_service(database, manual_refresh_per_day=3)
     await market.add_market(account, f"Résumé market {uuid.uuid4().hex[:8]}")
-    rolemap = RoleMapService(
+    rolemap = create_rolemap_service(
         database,
         market=market,
         profile=profile,

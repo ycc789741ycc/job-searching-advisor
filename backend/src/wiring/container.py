@@ -29,7 +29,7 @@ from advisor.profile import (
     create_profile_service,
 )
 from advisor.resume import ResumeService
-from advisor.rolemap import RoleMapService
+from advisor.rolemap import RoleMapService, create_rolemap_service
 from advisor.target import TargetService
 from kernel.ai_gateway import AiGateway
 from kernel.auth import ALGORITHM, JwksResolver, StaticSecretResolver, TokenVerifier
@@ -161,7 +161,7 @@ def build(settings: Settings | None = None) -> Container:
     market = create_market_service(
         database, manual_refresh_per_day=settings.crawl_manual_refresh_per_day
     )
-    rolemap = RoleMapService(
+    rolemap = create_rolemap_service(
         database,
         market=market,
         profile=profile,

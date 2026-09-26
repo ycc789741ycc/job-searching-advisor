@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 from advisor.identity import IdentityService, create_identity_service
 from advisor.profile import ProfileService, create_profile_service
-from advisor.rolemap import RoleMapService
+from advisor.rolemap import create_rolemap_service
 from advisor.rolemap.domain import DEFAULT_ROLE_COUNT
 from kernel.ai_gateway import AiGateway
 from kernel.ai_gateway.providers import REGISTRY, Completion, Request
@@ -267,7 +267,7 @@ async def test_an_assessment_citing_evidence_the_user_lacks_is_rejected(
 
     gateway = AiGateway(settings=settings, credentials=identity, budget=identity)
     market = create_market_service(database, manual_refresh_per_day=3)
-    rolemap = RoleMapService(
+    rolemap = create_rolemap_service(
         database,
         market=market,
         profile=profile,
@@ -339,7 +339,7 @@ async def test_the_role_map_estimate_runs_no_local_ml(
             location=None,
             description="Python, Postgres and queues. " * (i + 1),
         )
-    rolemap = RoleMapService(
+    rolemap = create_rolemap_service(
         database,
         market=market,
         profile=profile,
@@ -426,7 +426,7 @@ async def test_a_role_map_analyses_only_the_ten_clusters_closest_to_the_profile(
             json.dumps({"difficulty": 50, "confidence": 0.5, "reasoning": "A guess."})
         )
 
-    rolemap = RoleMapService(
+    rolemap = create_rolemap_service(
         database,
         market=market,
         profile=profile,
@@ -486,7 +486,7 @@ async def test_k_has_a_default_is_stored_per_user_and_changes_the_ceiling(
             location=None,
             description="Python, Postgres and queues.",
         )
-    rolemap = RoleMapService(
+    rolemap = create_rolemap_service(
         database,
         market=market,
         profile=profile,

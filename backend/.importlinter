@@ -426,6 +426,9 @@ source_modules =
     advisor.identity.service
     advisor.identity.auth
     advisor.identity.google
+    advisor.rolemap.domain
+    advisor.rolemap.service
+    advisor.rolemap.jobs
 forbidden_modules =
     sqlalchemy
     pgvector
@@ -442,3 +445,8 @@ forbidden_modules =
     advisor.identity.infra.mappers
     advisor.identity.infra.repositories
     advisor.identity.infra.unit_of_work
+    advisor.rolemap.infra
+# A component's __init__ re-exports its factory, which wires infra/ in. Using
+# another component through its public API must not count as reaching its ORM.
+ignore_imports =
+    advisor.* -> advisor.*.factory

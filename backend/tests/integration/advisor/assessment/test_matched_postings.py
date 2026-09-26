@@ -24,7 +24,7 @@ from advisor.market import (
 )
 from advisor.market.infra.models import CrawlSource
 from advisor.profile import create_profile_service
-from advisor.rolemap import RoleMapService
+from advisor.rolemap import create_rolemap_service
 from advisor.rolemap.infra.models import Role, RoleMember
 from kernel.ai_gateway import AiGateway
 from kernel.config import Settings
@@ -156,7 +156,7 @@ async def test_top_matched_lists_open_postings_in_live_roles_by_role_fit(
             user_agent="test",
         )
         gateway = AiGateway(settings=settings, credentials=identity, budget=identity)
-        rolemap = RoleMapService(
+        rolemap = create_rolemap_service(
             database,
             market=market,
             profile=profile,
