@@ -9,11 +9,11 @@ import only what is listed here (import-linter contract
 ``market-public-surface``).
 """
 
-from advisor.market import _jobs as jobs
-from advisor.market._crawling.run import (
+from advisor.market import jobs
+from advisor.market.crawling.run import (
     crawl_all,
 )
-from advisor.market._service import (
+from advisor.market.service import (
     BASELINE_SOURCES,
     BaselineSource,
     CompanySubscriptionView,

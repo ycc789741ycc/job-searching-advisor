@@ -8,12 +8,12 @@ import only what is listed here (import-linter contract
 ``rolemap-public-surface``).
 """
 
-from advisor.rolemap import _jobs as jobs
-from advisor.rolemap._domain import (
+from advisor.rolemap import jobs
+from advisor.rolemap.domain import (
     MAX_ROLE_COUNT,
     MIN_ROLE_COUNT,
 )
-from advisor.rolemap._service import (
+from advisor.rolemap.service import (
     RequirementView,
     RoleMapService,
     RoleView,

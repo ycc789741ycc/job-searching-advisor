@@ -8,7 +8,7 @@ import only what is listed here (import-linter contract
 ``target-public-surface``).
 """
 
-from advisor.target._service import (
+from advisor.target.service import (
     DimensionGap,
     TargetKind,
     TargetOptionView,

@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from advisor.profile._infra.oauth import (
+from advisor.profile.infra.oauth import (
     STATE_TTL_SECONDS,
     authorize_url,
     endpoints_for,

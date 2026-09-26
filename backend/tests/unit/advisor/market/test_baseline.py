@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from advisor.market import BASELINE_SOURCES, BaselineSource
-from advisor.market._crawling.adapters import BY_NAME
-from advisor.market._crawling.discovery import board_from_url
+from advisor.market.crawling.adapters import BY_NAME
+from advisor.market.crawling.discovery import board_from_url
 
 
 @pytest.mark.parametrize("source", BASELINE_SOURCES, ids=lambda s: s.company_name)

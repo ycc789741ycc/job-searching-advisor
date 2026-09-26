@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from advisor.market import SourceKind
-from advisor.market._crawling.adapters import (
+from advisor.market.crawling.adapters import (
     AshbyAdapter,
     GreenhouseAdapter,
     JsonLdAdapter,

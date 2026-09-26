@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from advisor.assessment._domain import MAX_MATCHES, MatchCandidate, rank_matches
+from advisor.assessment.domain import MAX_MATCHES, MatchCandidate, rank_matches
 
 
 def candidate(

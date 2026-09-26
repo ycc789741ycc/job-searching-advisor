@@ -35,22 +35,23 @@ backend/tests/{unit,integration}/   each mirrors src/
 ```
 
 - **A component** is `advisor/<c>/`. Its `__init__.py` is its public API.
-  `_service.py` holds its use cases, `_domain/` its pure rules, `_infra/` its
-  ORM models, repositories and adapters, and `_jobs.py` the use cases the worker
-  runs. Everything `_`-prefixed is private. One import-linter contract per
-  component forbids any other package from importing those private modules.
+  `service.py` holds its use cases, `domain/` its pure rules, `infra/` its
+  ORM models, repositories and adapters, and `jobs.py` the use cases the worker
+  runs. Those submodules are private. One import-linter contract per
+  component forbids any other package from importing them. `jobs` is the
+  exception: the worker's task registration imports it.
 - **Components form a one-way graph**, enforced as a `layers` contract:
   `gapplan | resume` → `target` → `assessment` → `rolemap` →
   `identity | profile | market`.
 - **The crawl logic belongs to `market`.** The board adapters, board discovery,
-  politeness rules and one crawl run live in `advisor/market/_crawling/`.
+  politeness rules and one crawl run live in `advisor/market/crawling/`.
   `crawler/` keeps only its loop. The worker's manual refresh gets a
   crawler-role connection through `Container.open_crawl_ingest()`, so `market`
   imports nothing outside itself.
 - **The fan-out read moves into `market`.** `MarketService.owners_affected_by`
   now answers which users watch a changed company or market, in the same
   fan-out transaction. The dispatcher calls it.
-- **Three deviations from the guideline:**
+- **Four deviations from the guideline:**
   - **`kernel/` stays a top-level package outside the application.** It holds
     database sessions, the outbox, the queue app, token signing, envelope
     crypto, object storage, the AI gateway, guarded fetch and embeddings. Those
@@ -65,6 +66,11 @@ backend/tests/{unit,integration}/   each mirrors src/
     parts of the container. A contract proves it (`crawler-holds-no-secrets`).
   - **Tests keep `unit/` and `integration/` roots, each mirroring `src/`**,
     rather than one mirrored tree with tiers chosen by marker.
+  - **Private submodules carry plain names** (`service.py`, `domain/`,
+    `infra/`), not the guideline's `_` prefix. In Python, a package's
+    `__init__.py` already defines what the package exposes, so a prefix on
+    every file restates it. The import-linter contracts, which name each
+    component's submodules, are what enforce the boundary.
 
 ## Consequences
 
@@ -90,8 +96,12 @@ backend/tests/{unit,integration}/   each mirrors src/
   wants a domain constant (for example `MAX_ROLE_COUNT`) now needs it exported,
   where it used to import `domain.rolemap` directly.
 - Tests of a component's private modules sit in that component's test folder
-  and import `_`-prefixed paths. import-linter does not check `tests/`, so
+  and import submodule paths. import-linter does not check `tests/`, so
   keeping other tests off those paths is a review matter.
+- Nothing in a submodule's name tells a reader it is private. Only the
+  import-linter contracts guard the boundary, so a new submodule has to be
+  added to its component's contract, and a deep import from `tests/` goes
+  unchecked.
 - `kernel/` remains the one shared bucket the guideline rules out. A new piece
   of technical code needs a judgement: does it belong in the kernel or in a
   component?
@@ -116,6 +126,9 @@ backend/tests/{unit,integration}/   each mirrors src/
   Closer to the guideline's "tier by what a test needs". Lost because the
   tier roots keep `make test-unit` and `make test-integration` choosing by path,
   unchanged, and a test cannot land in the hermetic run by forgetting a marker.
+- **`_`-prefixed private submodules, as the guideline asks.** They would mark
+  privacy in every path, but they duplicate what `__init__.py` already says and
+  clutter every import inside a component. Lost on readability.
 - **Keep the crawl adapters in `crawler/` and inject them into `market`.**
   This avoids moving code, but it leaves parsing and normalising postings, which
   are business rules about market data, in a delivery mechanism.

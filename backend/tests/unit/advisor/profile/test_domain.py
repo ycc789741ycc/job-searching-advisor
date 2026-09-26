@@ -6,7 +6,7 @@ from datetime import date
 
 import pytest
 
-from advisor.profile._domain import (
+from advisor.profile.domain import (
     CitationError,
     Evidence,
     EvidenceSource,

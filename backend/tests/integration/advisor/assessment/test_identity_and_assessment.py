@@ -16,7 +16,7 @@ from sqlalchemy import text
 from advisor.identity import IdentityService
 from advisor.profile import ProfileService
 from advisor.rolemap import RoleMapService
-from advisor.rolemap._domain import DEFAULT_ROLE_COUNT
+from advisor.rolemap.domain import DEFAULT_ROLE_COUNT
 from kernel.ai_gateway import AiGateway
 from kernel.ai_gateway.providers import REGISTRY, Completion, Request
 from kernel.config import Settings
@@ -317,7 +317,7 @@ async def test_the_role_map_estimate_runs_no_local_ml(
 ) -> None:
     """The api prices a role map without embeddings or clustering — it has no
     model cache, and a read-only filesystem to put one on."""
-    import advisor.rolemap._service as rolemap_service
+    import advisor.rolemap.service as rolemap_service
     from advisor.market import MarketService
 
     def no_local_ml(*args: object, **kwargs: object) -> None:
@@ -369,7 +369,7 @@ async def test_a_role_map_analyses_only_the_ten_clusters_closest_to_the_profile(
     import json
     import re
 
-    import advisor.rolemap._service as rolemap_service
+    import advisor.rolemap.service as rolemap_service
     from advisor.market import MarketService
     from kernel.embeddings import EMBEDDING_DIMENSIONS, ClusterResult
 

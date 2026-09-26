@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from advisor.profile._infra.resume_parser import parse
+from advisor.profile.infra.resume_parser import parse
 from kernel.errors import ValidationError
 
 

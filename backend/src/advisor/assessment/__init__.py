@@ -8,13 +8,13 @@ import only what is listed here (import-linter contract
 ``assessment-public-surface``).
 """
 
-from advisor.assessment import _jobs as jobs
-from advisor.assessment._domain import (
+from advisor.assessment import jobs
+from advisor.assessment.domain import (
     DEFAULT_MATCHES,
     MAX_MATCHES,
     MIN_MATCHES,
 )
-from advisor.assessment._service import (
+from advisor.assessment.service import (
     AssessmentService,
     AssessmentView,
     DimensionView,

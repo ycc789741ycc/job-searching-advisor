@@ -138,8 +138,8 @@ backend/
     kernel/   technical kernel with no domain logic: db, outbox, jobs, auth, crypto,
               storage, ai_gateway, fetch, embeddings
     advisor/  identity · profile · market · rolemap · assessment · target · gapplan · resume
-                __init__.py  the only importable surface; everything _-prefixed is private
-                _service.py use cases · _domain/ pure rules · _infra/ models and adapters
+                __init__.py  the only importable surface; submodules are private
+                service.py use cases · domain/ pure rules · infra/ models and adapters
   migrations/ Alembic
   tests/      unit/ and integration/, each mirroring src/
 web/          React + Vite SPA on the prototype's design system (ADR 0004)

@@ -25,7 +25,7 @@ from advisor.resume import (
     RevisionText,
     Template,
 )
-from advisor.resume._domain import Bullet, Position, ResumeContent
+from advisor.resume.domain import Bullet, Position, ResumeContent
 from advisor.target import TargetKind, TargetRef
 from api import errors
 from api.dependencies import current_user, get_container

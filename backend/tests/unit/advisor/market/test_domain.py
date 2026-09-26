@@ -6,7 +6,7 @@ from datetime import date
 
 import pytest
 
-from advisor.market._domain import (
+from advisor.market.domain import (
     NormalizedPosting,
     SalaryRange,
     SourceKind,

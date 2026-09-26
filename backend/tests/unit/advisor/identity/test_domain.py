@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from advisor.identity._domain import BudgetState, Provider, billing_month_start, requires_base_url
+from advisor.identity.domain import BudgetState, Provider, billing_month_start, requires_base_url
 
 
 def state(cap: str, spent: str) -> BudgetState:

@@ -9,14 +9,14 @@ import only what is listed here (import-linter contract
 ``identity-public-surface``).
 """
 
-from advisor.identity._domain import (
+from advisor.identity.domain import (
     FederatedSignInRejectedError,
     SignInFailure,
 )
-from advisor.identity._infra.google import (
+from advisor.identity.infra.google import (
     ATTEMPT_TTL_SECONDS as GOOGLE_ATTEMPT_TTL_SECONDS,
 )
-from advisor.identity._service import (
+from advisor.identity.service import (
     SUGGESTED_MODELS,
     AccountView,
     AuthService,

@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from advisor.assessment._domain import SkillGap, UncoveredRequirement, closing_lifts
-from advisor.gapplan._domain import (
+from advisor.assessment.domain import SkillGap, UncoveredRequirement, closing_lifts
+from advisor.gapplan.domain import (
     DraftMilestone,
     DraftProject,
     DraftTask,
@@ -20,7 +20,7 @@ from advisor.gapplan._domain import (
     stepping_stones,
     tasks_match,
 )
-from advisor.target._domain import (
+from advisor.target.domain import (
     DimensionGap,
     Requirement,
     RequirementBasis,

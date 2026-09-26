@@ -10,7 +10,7 @@ import pytest_asyncio
 from sqlalchemy import text
 
 from advisor.identity import AuthService
-from advisor.identity._domain import (
+from advisor.identity.domain import (
     MAX_FAILED_ATTEMPTS,
     FederatedSignInRejectedError,
     IdTokenClaims,

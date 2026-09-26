@@ -17,10 +17,10 @@ from sqlalchemy import text
 from advisor.assessment import AssessmentService, FitView
 from advisor.identity import IdentityService
 from advisor.market import CrawlIngest, MarketService, NormalizedPosting, SourceKind
-from advisor.market._infra.models import CrawlSource
+from advisor.market.infra.models import CrawlSource
 from advisor.profile import ProfileService
 from advisor.rolemap import RoleMapService
-from advisor.rolemap._infra.models import Role, RoleMember
+from advisor.rolemap.infra.models import Role, RoleMember
 from kernel.ai_gateway import AiGateway
 from kernel.config import Settings
 from kernel.db import Database

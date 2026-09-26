@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from advisor.identity._domain import (
+from advisor.identity.domain import (
     AccountAction,
     FederatedSignInRejectedError,
     IdTokenClaims,

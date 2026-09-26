@@ -74,23 +74,23 @@ backend/src/
   advisor/                  # the application: one package per component, no framework code
     identity/  profile/  market/  rolemap/  assessment/  target/  gapplan/  resume/
       __init__.py           # the ONLY importable surface: service interface, DTOs, job functions
-      _service.py           # use cases
-      _domain/              # entities and rules; pure Python, no I/O
-      _infra/               # ORM models, repositories, external adapters
-      _jobs.py              # use cases the worker runs
-    market/_crawling/       # board adapters, discovery, politeness, one crawl run
+      service.py           # use cases
+      domain/              # entities and rules; pure Python, no I/O
+      infra/               # ORM models, repositories, external adapters
+      jobs.py              # use cases the worker runs
+    market/crawling/       # board adapters, discovery, politeness, one crawl run
 web/                        # TS client
 ```
 
-> The backend is packaged by component ([ADR 0009](decisions/0009-package-the-backend-by-component.md), after the design guideline's ADR 0003). A component owns its domain model, use cases and data access, and everything `_`-prefixed in it is private. Before 2026-09-27 the domain model sat in a top-level `domain/` folder beside `modules/<m>/{public,api,jobs,infra}`, so older ADRs cite paths like `modules/rolemap/public.py` and `domain/rolemap/selection.py`. Those are now `advisor/rolemap/_service.py` and `advisor/rolemap/_domain/selection.py`.
+> The backend is packaged by component ([ADR 0009](decisions/0009-package-the-backend-by-component.md), after the design guideline's ADR 0003). A component owns its domain model, use cases and data access, its `__init__.py` is its public API, and its submodules are private. Before 2026-09-27 the domain model sat in a top-level `domain/` folder beside `modules/<m>/{public,api,jobs,infra}`, so older ADRs cite paths like `modules/rolemap/public.py` and `domain/rolemap/selection.py`. Those are now `advisor/rolemap/service.py` and `advisor/rolemap/domain/selection.py`.
 >
 > `kernel/` stays outside the application on purpose: it is infrastructure, and the rules below name its packages. It is named `kernel`, not `platform`, because `platform` would shadow Python's standard-library module.
 >
 > `gapplan` replaces the earlier `growth`: with no CareerGoal (domain decision 16), the component is about plans for a Target and nothing else. The Target itself has its own component, `target`, because both `gapplan` and `resume` aim at one and neither may own it ([ADR 0005](decisions/0005-resolve-targets-in-their-own-module.md)). `target` has no tables: it resolves a Target through other components' public APIs and hands back a frozen snapshot that the plan or résumé stores. `resume` serves its routes under `/tailored-resumes`, because `/resumes` is the profile's, for uploaded files.
 
 ### Rules (enforced in CI with `import-linter` contracts, `backend/.importlinter`)
-1. A component is imported **only** through its `__init__.py`. Nothing outside it imports its `_`-prefixed modules.
-2. A component's `_domain/` imports no kernel, deployable, framework, ORM or HTTP library, and nothing else from its own component.
+1. A component is imported **only** through its `__init__.py`. Nothing outside it imports its submodules (`service`, `domain`, `infra`, …); `jobs` is public, for the worker.
+2. A component's `domain/` imports no kernel, deployable, framework, ORM or HTTP library, and nothing else from its own component.
 3. Component domain models are independent: none imports another. A concept two components need gets its own component.
 4. `advisor` imports no deployable (`api`, `worker`, `crawler`, `cli`), no composition root (`wiring`) and no web or queue framework.
 5. Components depend on each other one way only: `gapplan | resume` → `target` → `assessment` → `rolemap` → `identity | profile | market`.

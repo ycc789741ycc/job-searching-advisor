@@ -6,7 +6,7 @@ import itertools
 
 import pytest
 
-from advisor.rolemap._domain import (
+from advisor.rolemap.domain import (
     DEFAULT_ROLE_COUNT,
     MAX_ROLE_COUNT,
     MIN_POSTINGS_FOR_A_ROLE,

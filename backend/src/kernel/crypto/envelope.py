@@ -6,7 +6,7 @@ process master key. Moving to a cloud KMS later replaces only ``_wrap``/
 (docs/technical_boundaries.md section 4).
 
 Importing this module is restricted by an import-linter contract: only
-``kernel.ai_gateway`` and ``advisor.profile._infra.connectors`` may decrypt.
+``kernel.ai_gateway`` and ``advisor.profile.infra.connectors`` may decrypt.
 """
 
 from __future__ import annotations

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from advisor.resume._domain import (
+from advisor.resume.domain import (
     Bullet,
     Options,
     Origin,
@@ -19,7 +19,7 @@ from advisor.resume._domain import (
     mark_edits,
     settle_revision,
 )
-from advisor.resume._infra.render import render_html, render_pdf
+from advisor.resume.infra.render import render_html, render_pdf
 
 
 def content(*bullets: Bullet, name: str = "Maya Lin Chen") -> ResumeContent:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from advisor.assessment._domain import (
+from advisor.assessment.domain import (
     DimensionCountError,
     DimensionScore,
     LineageKind,

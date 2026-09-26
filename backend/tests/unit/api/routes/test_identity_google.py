@@ -20,8 +20,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from advisor.identity import GoogleSignIn, Session
-from advisor.identity._domain import FederatedSignInRejectedError, IdTokenClaims, SignInFailure
-from advisor.identity._infra.google import (
+from advisor.identity.domain import FederatedSignInRejectedError, IdTokenClaims, SignInFailure
+from advisor.identity.infra.google import (
     ATTEMPT_TTL_SECONDS,
     GoogleEndpoints,
     GoogleOidc,

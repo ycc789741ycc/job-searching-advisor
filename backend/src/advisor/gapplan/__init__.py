@@ -8,8 +8,8 @@ import only what is listed here (import-linter contract
 ``gapplan-public-surface``).
 """
 
-from advisor.gapplan import _jobs as jobs
-from advisor.gapplan._service import (
+from advisor.gapplan import jobs
+from advisor.gapplan.service import (
     EvidenceCite,
     GapPlanService,
     GapView,

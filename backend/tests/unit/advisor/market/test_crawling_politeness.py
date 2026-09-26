@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from advisor.market._crawling.discovery import (
+from advisor.market.crawling.discovery import (
     BoardRef,
     board_from_url,
     candidate_slugs,
     discover_board,
 )
-from advisor.market._crawling.politeness import RateLimiter, RobotsCache, origin_of, robots_url_for
+from advisor.market.crawling.politeness import RateLimiter, RobotsCache, origin_of, robots_url_for
 from kernel.errors import UpstreamFailedError
 
 
@@ -179,7 +179,7 @@ def test_anything_else_is_not_read_as_a_board(url: str) -> None:
 
 async def test_a_board_url_is_tried_before_guessing_from_the_name() -> None:
     """The user's link names a slug no guess would reach."""
-    from advisor.market._crawling.adapters import BY_NAME
+    from advisor.market.crawling.adapters import BY_NAME
 
     endpoint = BY_NAME["lever"].endpoint_for("kestrel-fin-eng")
     client = StubClient({endpoint: [{"text": "Senior Backend Engineer", "hostedUrl": "x"}]})

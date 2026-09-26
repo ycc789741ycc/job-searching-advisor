@@ -20,7 +20,7 @@ from advisor.market import (
     SourceKind,
     Visibility,
 )
-from advisor.market._infra.models import CrawlSource
+from advisor.market.infra.models import CrawlSource
 from kernel.db import Database
 
 pytestmark = pytest.mark.integration
@@ -292,9 +292,9 @@ async def test_a_link_reaches_board_discovery_without_its_owner(
     """The crawler learns where to look, never who asked."""
     from types import SimpleNamespace
 
-    import advisor.market._crawling.discovery
+    import advisor.market.crawling.discovery
     from advisor.market import jobs
-    from advisor.market._crawling.discovery import DiscoveredBoard
+    from advisor.market.crawling.discovery import DiscoveredBoard
 
     market = MarketService(database, manual_refresh_per_day=3)
     company = f"Northwind {uuid.uuid4().hex[:8]}"
@@ -312,7 +312,7 @@ async def test_a_link_reaches_board_discovery_without_its_owner(
         probed.append((company_name, url))
         return DiscoveredBoard(adapter_name="greenhouse", endpoint=endpoint, posting_count=1)
 
-    monkeypatch.setattr(advisor.market._crawling.discovery, "discover_board", fake_probe)
+    monkeypatch.setattr(advisor.market.crawling.discovery, "discover_board", fake_probe)
     await jobs.discover_board(
         SimpleNamespace(settings=settings, market=market, database=database),
         owner_id=str(account),
@@ -347,9 +347,9 @@ async def test_the_weekly_recheck_sees_every_users_subscriptions(
     policy — or it silently finds nothing to crawl."""
     from types import SimpleNamespace
 
-    import advisor.market._crawling.discovery
+    import advisor.market.crawling.discovery
     from advisor.market import jobs
-    from advisor.market._crawling.discovery import DiscoveredBoard
+    from advisor.market.crawling.discovery import DiscoveredBoard
 
     market = MarketService(database, manual_refresh_per_day=3)
     company = f"Ostrom {uuid.uuid4().hex[:8]}"
@@ -368,7 +368,7 @@ async def test_the_weekly_recheck_sees_every_users_subscriptions(
             return None
         return DiscoveredBoard(adapter_name="ashby", endpoint=endpoint, posting_count=1)
 
-    monkeypatch.setattr(advisor.market._crawling.discovery, "discover_board", fake_probe)
+    monkeypatch.setattr(advisor.market.crawling.discovery, "discover_board", fake_probe)
     await jobs.materialize_crawl_sources(SimpleNamespace(settings=settings, database=database))
 
     assert (company, "https://jobs.ashbyhq.com/ostrom-test") in probed
@@ -474,7 +474,7 @@ async def test_materialising_leaves_a_baseline_source_alone(
     """A watched company already on the baseline list gets no second source."""
     from types import SimpleNamespace
 
-    import advisor.market._crawling.discovery
+    import advisor.market.crawling.discovery
     from advisor.market import BASELINE_SOURCES, jobs
 
     baseline = BASELINE_SOURCES[0]
@@ -488,7 +488,7 @@ async def test_materialising_leaves_a_baseline_source_alone(
         probed.append(company_name)
         return None
 
-    monkeypatch.setattr(advisor.market._crawling.discovery, "discover_board", record_probe)
+    monkeypatch.setattr(advisor.market.crawling.discovery, "discover_board", record_probe)
     await jobs.materialize_crawl_sources(SimpleNamespace(settings=settings, database=database))
 
     assert baseline.company_name not in probed

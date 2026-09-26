@@ -14,7 +14,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from advisor.rolemap._domain import DEFAULT_ROLE_COUNT, MAX_ROLE_COUNT, MIN_ROLE_COUNT
+from advisor.rolemap.domain import DEFAULT_ROLE_COUNT, MAX_ROLE_COUNT, MIN_ROLE_COUNT
 from api import errors
 from api.dependencies import current_user, get_container
 from api.routes.rolemap import router

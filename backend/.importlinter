@@ -16,11 +16,14 @@ include_external_packages = True
 
 # Rule 1: a component's __init__ is its only public API. Nothing outside the
 # component — another component, a deployable, the composition root or the
-# kernel — imports any of its `_`-prefixed modules. One contract per component,
+# kernel — imports any of its submodules. One contract per component,
 # so each names exactly what is private to it.
 #
+# `jobs` is the one public submodule: the worker's task registration
+# (wiring.queue) imports it to run those use cases.
+#
 # Direct imports only. Reaching a component's internals *through* its
-# __init__ is the design; typing `advisor.rolemap._infra.models` is not.
+# __init__ is the design; typing `advisor.rolemap.infra.models` is not.
 
 [importlinter:contract:identity-public-surface]
 name = Only advisor.identity itself is importable from outside the component
@@ -40,11 +43,11 @@ source_modules =
     advisor.gapplan
     advisor.resume
 forbidden_modules =
-    advisor.identity._service
-    advisor.identity._domain
-    advisor.identity._infra
-    advisor.identity._auth
-    advisor.identity._google
+    advisor.identity.service
+    advisor.identity.domain
+    advisor.identity.infra
+    advisor.identity.auth
+    advisor.identity.google
 allow_indirect_imports = True
 
 [importlinter:contract:profile-public-surface]
@@ -65,10 +68,9 @@ source_modules =
     advisor.gapplan
     advisor.resume
 forbidden_modules =
-    advisor.profile._service
-    advisor.profile._domain
-    advisor.profile._infra
-    advisor.profile._jobs
+    advisor.profile.service
+    advisor.profile.domain
+    advisor.profile.infra
 allow_indirect_imports = True
 
 [importlinter:contract:market-public-surface]
@@ -89,12 +91,11 @@ source_modules =
     advisor.gapplan
     advisor.resume
 forbidden_modules =
-    advisor.market._service
-    advisor.market._domain
-    advisor.market._infra
-    advisor.market._jobs
-    advisor.market._baseline
-    advisor.market._crawling
+    advisor.market.service
+    advisor.market.domain
+    advisor.market.infra
+    advisor.market.baseline
+    advisor.market.crawling
 allow_indirect_imports = True
 
 [importlinter:contract:rolemap-public-surface]
@@ -115,10 +116,9 @@ source_modules =
     advisor.gapplan
     advisor.resume
 forbidden_modules =
-    advisor.rolemap._service
-    advisor.rolemap._domain
-    advisor.rolemap._infra
-    advisor.rolemap._jobs
+    advisor.rolemap.service
+    advisor.rolemap.domain
+    advisor.rolemap.infra
 allow_indirect_imports = True
 
 [importlinter:contract:assessment-public-surface]
@@ -139,10 +139,9 @@ source_modules =
     advisor.gapplan
     advisor.resume
 forbidden_modules =
-    advisor.assessment._service
-    advisor.assessment._domain
-    advisor.assessment._infra
-    advisor.assessment._jobs
+    advisor.assessment.service
+    advisor.assessment.domain
+    advisor.assessment.infra
 allow_indirect_imports = True
 
 [importlinter:contract:target-public-surface]
@@ -163,8 +162,8 @@ source_modules =
     advisor.gapplan
     advisor.resume
 forbidden_modules =
-    advisor.target._service
-    advisor.target._domain
+    advisor.target.service
+    advisor.target.domain
 allow_indirect_imports = True
 
 [importlinter:contract:gapplan-public-surface]
@@ -185,10 +184,9 @@ source_modules =
     advisor.target
     advisor.resume
 forbidden_modules =
-    advisor.gapplan._service
-    advisor.gapplan._domain
-    advisor.gapplan._infra
-    advisor.gapplan._jobs
+    advisor.gapplan.service
+    advisor.gapplan.domain
+    advisor.gapplan.infra
 allow_indirect_imports = True
 
 [importlinter:contract:resume-public-surface]
@@ -209,27 +207,26 @@ source_modules =
     advisor.target
     advisor.gapplan
 forbidden_modules =
-    advisor.resume._service
-    advisor.resume._domain
-    advisor.resume._infra
-    advisor.resume._jobs
+    advisor.resume.service
+    advisor.resume.domain
+    advisor.resume.infra
 allow_indirect_imports = True
 
 # Rule 2: the domain model inside each component is pure: no application
 # code, no kernel, no framework, no I/O. It is the bottom layer of its
 # component and imports nothing else from it.
 [importlinter:contract:pure-domain]
-name = A component's _domain imports no kernel, delivery code or framework
+name = A component's domain imports no kernel, delivery code or framework
 type = forbidden
 source_modules =
-    advisor.identity._domain
-    advisor.profile._domain
-    advisor.market._domain
-    advisor.rolemap._domain
-    advisor.assessment._domain
-    advisor.target._domain
-    advisor.gapplan._domain
-    advisor.resume._domain
+    advisor.identity.domain
+    advisor.profile.domain
+    advisor.market.domain
+    advisor.rolemap.domain
+    advisor.assessment.domain
+    advisor.target.domain
+    advisor.gapplan.domain
+    advisor.resume.domain
 forbidden_modules =
     api
     worker
@@ -237,9 +234,9 @@ forbidden_modules =
     cli
     wiring
     kernel
-    advisor.*._service
-    advisor.*._infra
-    advisor.*._jobs
+    advisor.*.service
+    advisor.*.infra
+    advisor.*.jobs
     fastapi
     sqlalchemy
     httpx
@@ -253,14 +250,14 @@ forbidden_modules =
 name = Component domain models do not import each other
 type = independence
 modules =
-    advisor.identity._domain
-    advisor.profile._domain
-    advisor.market._domain
-    advisor.rolemap._domain
-    advisor.assessment._domain
-    advisor.target._domain
-    advisor.gapplan._domain
-    advisor.resume._domain
+    advisor.identity.domain
+    advisor.profile.domain
+    advisor.market.domain
+    advisor.rolemap.domain
+    advisor.assessment.domain
+    advisor.target.domain
+    advisor.gapplan.domain
+    advisor.resume.domain
 
 # Rule 4: the application holds no framework or delivery code (design
 # guideline, package by component). Routes live in api/, task registration in
@@ -321,12 +318,12 @@ forbidden_modules =
     advisor.target
     advisor.gapplan
     advisor.resume
-    advisor.market._service
-    advisor.market._domain
-    advisor.market._infra
-    advisor.market._jobs
-    advisor.market._baseline
-    advisor.market._crawling
+    advisor.market.service
+    advisor.market.domain
+    advisor.market.infra
+    advisor.market.jobs
+    advisor.market.baseline
+    advisor.market.crawling
 # Direct imports only: the crawler goes through advisor.market, which
 # necessarily sits on top of that component's own domain and infra.
 allow_indirect_imports = True

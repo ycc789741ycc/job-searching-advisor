@@ -145,18 +145,18 @@ backend/src/
   advisor/    the application, one component per capability: identity · profile ·
               market · rolemap · assessment · target · gapplan · resume
                 __init__.py  the component's ONLY importable surface
-                _service.py  use cases
-                _domain/     pure rules: no I/O, no framework, no kernel
-                _infra/      ORM models, repositories and adapters
-                _jobs.py     use cases the worker runs
-              market/_crawling/  board adapters, discovery, politeness, one crawl run
+                service.py  use cases
+                domain/     pure rules: no I/O, no framework, no kernel
+                infra/      ORM models, repositories and adapters
+                jobs.py     use cases the worker runs
+              market/crawling/  board adapters, discovery, politeness, one crawl run
 backend/tests/{unit,integration}/   each mirrors src/
 web/          React + Vite SPA, on the prototype's Organic design system (ADR 0004)
 ```
 
 The backend is packaged by component, as the design guideline requires (its ADR
 0003; ours is ADR 0009). A component owns its domain model, use cases and data
-access. Everything `_`-prefixed inside it is private, and other components,
+access. Its `__init__.py` is its public API and its submodules are private: other components,
 routes and the composition root use only its `__init__.py`. Routes, task
 registration and entrypoints never live inside `advisor/`. `kernel/` stays
 outside the application on purpose (ADR 0009).

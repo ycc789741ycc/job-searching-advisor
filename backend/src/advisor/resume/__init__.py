@@ -8,8 +8,8 @@ import only what is listed here (import-linter contract
 ``resume-public-surface``).
 """
 
-from advisor.resume import _jobs as jobs
-from advisor.resume._service import (
+from advisor.resume import jobs
+from advisor.resume.service import (
     CoverageView,
     ExportView,
     Options,
