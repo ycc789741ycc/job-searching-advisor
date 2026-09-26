@@ -18,6 +18,8 @@ from advisor.identity import (
     GoogleOidc,
     GoogleSignIn,
     IdentityService,
+    create_auth_service,
+    create_identity_service,
 )
 from advisor.market import CrawlIngest, MarketService, create_market_service
 from advisor.profile import (
@@ -126,11 +128,11 @@ def build(settings: Settings | None = None) -> Container:
     object_store = ObjectStore(settings)
 
     default_cap = Decimal(str(settings.ai_default_monthly_budget_usd))
-    identity = IdentityService(database, default_monthly_cap_usd=default_cap)
+    identity = create_identity_service(database, default_monthly_cap_usd=default_cap)
 
     # Only the api signs tokens; the worker never does, so the secret is
     # resolved lazily rather than at wiring time.
-    auth = AuthService(
+    auth = create_auth_service(
         database,
         secret=settings.auth_jwt_secret.get_secret_value() if settings.auth_jwt_secret else "",
         issuer=settings.auth_token_issuer,

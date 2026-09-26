@@ -21,29 +21,32 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 
 from advisor.identity.domain import (
+    Account,
     AccountAction,
+    AccountFilter,
+    AiUsageBudget,
+    Authentication,
+    FederatedIdentity,
+    FederatedIdentityFilter,
     FederatedProvider,
+    IdentityUnitOfWork,
     IdTokenClaims,
-    LockoutState,
+    PasswordCredential,
+    PasswordCredentialFilter,
     RefreshRejectedError,
-    RefreshTokenState,
+    RefreshToken,
+    RefreshTokenFilter,
     WeakPasswordError,
     access_token_expiry,
     assert_acceptable,
+    digest,
     new_refresh_token,
     normalize_email,
     refresh_token_expiry,
     resolve_federated_account,
-)
-from advisor.identity.infra.auth_repository import AuthRepository, digest
-from advisor.identity.infra.models import (
-    Account,
-    AiUsageBudget,
-    FederatedIdentity,
-    PasswordCredential,
-    RefreshToken,
 )
 from advisor.identity.infra.passwords import (
     dummy_verify,
@@ -52,8 +55,7 @@ from advisor.identity.infra.passwords import (
     verify_password,
 )
 from kernel.auth import issue_access_token
-from kernel.db import Database
-from kernel.db.base import utcnow
+from kernel.clock import utcnow
 from kernel.errors import ConflictError, RateLimitedError, UnauthenticatedError, ValidationError
 from kernel.logging import get_logger
 
@@ -88,16 +90,16 @@ class Session:
 class AuthService:
     def __init__(
         self,
-        database: Database,
+        uow: IdentityUnitOfWork,
         *,
         secret: str,
         issuer: str,
         audience: str,
         access_ttl_seconds: int,
         refresh_ttl_days: int,
-        default_monthly_cap_usd: object,
+        default_monthly_cap_usd: Decimal,
     ) -> None:
-        self._db = database
+        self._uow = uow
         self._secret = secret
         self._issuer = issuer
         self._audience = audience
@@ -117,36 +119,27 @@ class AuthService:
             raise ValidationError(str(exc)) from exc
 
         now = utcnow()
-        # The account row has to be found and created before there is an
-        # app.user_id, so this runs in a session with none set. The policies on
-        # these tables allow exactly that and nothing else.
-        async with self._db.shared() as session:
-            repo = AuthRepository(session)
-            if await repo.account_by_email(address) is not None:
+        # The account has to be found and created before there is an
+        # app.user_id, so this runs in the unauthenticated scope. The policies
+        # on these tables allow exactly that and nothing else.
+        async with self._uow.unauthenticated() as auth:
+            if await auth.accounts.get_count(AccountFilter(email=address)) > 0:
                 raise ConflictError("An account already exists for that email.")
-
-            account = Account(email=address, auth_subject=None)
-            session.add(account)
-            await session.flush()
-
-            repo.add_credential(
-                PasswordCredential(
-                    owner_id=account.id,
-                    account_id=account.id,
-                    password_hash=hash_password(password),
-                    password_updated_at=now,
+            account = await auth.accounts.create(Account.registered(address))
+            await auth.passwords.create(
+                PasswordCredential.set_for(
+                    account.id, password_hash=hash_password(password), at=now
                 )
             )
-            account_id = account.id
 
-        # The budget is ordinary owner-zone data, so it is written in a scoped
-        # session. Only the two authentication tables have the bootstrap
-        # exception, and only because they are read before an identity exists.
-        async with self._db.for_user(account_id) as session:
-            session.add(AiUsageBudget(owner_id=account_id, monthly_cap_usd=self._default_cap))
+        # The budget is ordinary owner-zone data, so it is written in the owner
+        # scope. Only the authentication tables have the bootstrap exception,
+        # and only because they are read before an identity exists.
+        async with self._uow.for_owner(account.id) as mine:
+            await mine.budgets.create(AiUsageBudget.capped(account.id, self._default_cap))
 
-        log.info("auth.registered", account_id=str(account_id))
-        return await self._start_session(account_id, address, now=now)
+        log.info("auth.registered", account_id=str(account.id))
+        return await self._start_session(account.id, address, now=now)
 
     # -- sign in ------------------------------------------------------------
 
@@ -159,10 +152,11 @@ class AuthService:
         # The outcome is decided inside, committed, and acted on afterwards.
         outcome: _SignInOutcome
 
-        async with self._db.shared() as session:
-            repo = AuthRepository(session)
-            account = await repo.account_by_email(address)
-            credential = await repo.credential_for(account.id) if account is not None else None
+        async with self._uow.unauthenticated() as auth:
+            account = _first(
+                await auth.accounts.get_list(AccountFilter(email=address), page_size=1)
+            )
+            credential = await _password_of(auth, account.id) if account is not None else None
 
             if account is None or credential is None:
                 # Spend the same work as a real check so the response time does
@@ -170,17 +164,14 @@ class AuthService:
                 dummy_verify()
                 outcome = _SignInOutcome(failure=_BAD_CREDENTIALS)
             else:
-                lockout = LockoutState(
-                    failed_attempts=credential.failed_attempts,
-                    last_failed_at=credential.last_failed_at,
-                )
+                lockout = credential.lockout
                 if lockout.is_locked(now=now):
                     unlocks = lockout.unlocks_at(now=now)
                     outcome = _SignInOutcome(locked_until=unlocks.isoformat() if unlocks else None)
                 elif not verify_password(credential.password_hash, password):
                     failed = lockout.after_failure(now=now)
-                    credential.failed_attempts = failed.failed_attempts
-                    credential.last_failed_at = failed.last_failed_at
+                    credential.record_lockout(failed)
+                    await auth.passwords.update(credential)
                     log.info(
                         "auth.sign_in_failed",
                         account_id=str(account.id),
@@ -188,13 +179,11 @@ class AuthService:
                     )
                     outcome = _SignInOutcome(failure=_BAD_CREDENTIALS)
                 else:
-                    cleared = lockout.after_success()
-                    credential.failed_attempts = cleared.failed_attempts
-                    credential.last_failed_at = cleared.last_failed_at
+                    credential.record_lockout(lockout.after_success())
                     # The only moment the plaintext is available to rehash with.
                     if needs_rehash(credential.password_hash):
-                        credential.password_hash = hash_password(password)
-                        credential.password_updated_at = now
+                        credential.rehash(hash_password(password), at=now)
+                    await auth.passwords.update(credential)
                     outcome = _SignInOutcome(account_id=account.id)
 
         if outcome.locked_until is not None:
@@ -226,48 +215,57 @@ class AuthService:
 
         # Like registration, this runs before there is an app.user_id. The
         # authentication tables' policies allow exactly that.
-        async with self._db.shared() as session:
-            repo = AuthRepository(session)
-            linked = await repo.federated_identity(provider, claims.subject)
-            by_email = await repo.account_by_email(address) if linked is None else None
+        async with self._uow.unauthenticated() as auth:
+            linked = _first(
+                await auth.federated.get_list(
+                    FederatedIdentityFilter(provider=provider, subject=claims.subject),
+                    page_size=1,
+                )
+            )
+            by_email = (
+                _first(await auth.accounts.get_list(AccountFilter(email=address), page_size=1))
+                if linked is None
+                else None
+            )
             resolution = resolve_federated_account(
                 linked_account_id=linked.account_id if linked is not None else None,
                 email_account_id=by_email.id if by_email is not None else None,
                 email_account_has_password=(
-                    by_email is not None and await repo.credential_for(by_email.id) is not None
+                    by_email is not None and await _password_of(auth, by_email.id) is not None
                 ),
                 email_account_has_same_provider=(
                     by_email is not None
-                    and await repo.federated_identity_for(by_email.id, provider) is not None
+                    and await auth.federated.get_count(
+                        FederatedIdentityFilter(account_id=by_email.id, provider=provider)
+                    )
+                    > 0
                 ),
             )
 
             if resolution.action is AccountAction.CREATE:
-                account = Account(email=address, auth_subject=None)
-                session.add(account)
-                await session.flush()
-                account_id = account.id
+                account_id = (await auth.accounts.create(Account.registered(address))).id
                 created = True
             else:
                 assert resolution.account_id is not None
                 account_id = resolution.account_id
 
             if resolution.action is not AccountAction.SIGN_IN:
-                repo.add_federated_identity(
-                    FederatedIdentity(
-                        owner_id=account_id,
-                        account_id=account_id,
-                        provider=provider,
-                        subject=claims.subject,
-                        email_at_link=address,
+                await auth.federated.create(
+                    FederatedIdentity.linked(
+                        account_id, provider=provider, subject=claims.subject, email=address
                     )
                 )
 
             if resolution.remove_password:
                 # Whoever registered this address before its owner proved it
                 # loses the password and every session it opened.
-                await repo.delete_credential_for(account_id)
-                revoked = await repo.revoke_all_for(account_id, at=now)
+                for password in await auth.passwords.get_list(
+                    PasswordCredentialFilter(account_id=account_id)
+                ):
+                    await auth.passwords.delete(password.id)
+                revoked = await auth.refresh_tokens.revoke_all(
+                    RefreshTokenFilter(account_id=account_id), at=now
+                )
                 log.warning(
                     "auth.google_linked",
                     account_id=str(account_id),
@@ -279,12 +277,12 @@ class AuthService:
 
             email = address
             if linked is not None:
-                existing = await session.get(Account, account_id)
+                existing = await auth.accounts.get(account_id)
                 email = existing.email if existing is not None else address
 
         if created:
-            async with self._db.for_user(account_id) as session:
-                session.add(AiUsageBudget(owner_id=account_id, monthly_cap_usd=self._default_cap))
+            async with self._uow.for_owner(account_id) as mine:
+                await mine.budgets.create(AiUsageBudget.capped(account_id, self._default_cap))
             log.info("auth.registered", account_id=str(account_id), method=provider)
 
         log.info("auth.signed_in", account_id=str(account_id), method=provider)
@@ -308,31 +306,28 @@ class AuthService:
         address = ""
         family: uuid.UUID | None = None
 
-        async with self._db.shared() as session:
-            repo = AuthRepository(session)
-            stored = await repo.refresh_token(refresh_token)
+        async with self._uow.unauthenticated() as auth:
+            stored = await _token(auth, refresh_token)
             if stored is None:
                 rejection = "Please sign in again."
             else:
-                state = RefreshTokenState(
-                    expires_at=stored.expires_at,
-                    revoked_at=stored.revoked_at,
-                    used_at=stored.used_at,
-                )
                 try:
-                    state.assert_usable(now=now)
+                    stored.state.assert_usable(now=now)
                 except RefreshRejectedError as exc:
                     rejection = str(exc)
                     if stored.used_at is not None:
-                        revoked = await repo.revoke_family(stored.family_id, at=now)
+                        revoked = await auth.refresh_tokens.revoke_all(
+                            RefreshTokenFilter(family_id=stored.family_id), at=now
+                        )
                         log.warning(
                             "auth.refresh_token_reused",
-                            account_id=str(stored.owner_id),
+                            account_id=str(stored.account_id),
                             revoked=revoked,
                         )
                 else:
-                    stored.used_at = now
-                    account = await session.get(Account, stored.account_id)
+                    stored.use(now)
+                    await auth.refresh_tokens.update(stored)
+                    account = await auth.accounts.get(stored.account_id)
                     if account is None:
                         rejection = "Please sign in again."
                     else:
@@ -352,16 +347,19 @@ class AuthService:
         if not refresh_token:
             return
         now = utcnow()
-        async with self._db.shared() as session:
-            repo = AuthRepository(session)
-            stored = await repo.refresh_token(refresh_token)
+        async with self._uow.unauthenticated() as auth:
+            stored = await _token(auth, refresh_token)
             if stored is not None:
-                await repo.revoke_family(stored.family_id, at=now)
+                await auth.refresh_tokens.revoke_all(
+                    RefreshTokenFilter(family_id=stored.family_id), at=now
+                )
 
     async def sign_out_everywhere(self, account_id: uuid.UUID) -> int:
         now = utcnow()
-        async with self._db.for_user(account_id) as session:
-            return await AuthRepository(session).revoke_all_for(account_id, at=now)
+        async with self._uow.for_owner(account_id) as mine:
+            return await mine.refresh_tokens.revoke_all(
+                RefreshTokenFilter(account_id=account_id), at=now
+            )
 
     # -- internals ----------------------------------------------------------
 
@@ -376,11 +374,10 @@ class AuthService:
         token = new_refresh_token()
         refresh_expires = refresh_token_expiry(now=now, ttl_days=self._refresh_ttl_days)
 
-        async with self._db.shared() as session:
-            AuthRepository(session).add_refresh_token(
-                RefreshToken(
-                    owner_id=account_id,
-                    account_id=account_id,
+        async with self._uow.unauthenticated() as auth:
+            await auth.refresh_tokens.create(
+                RefreshToken.issued(
+                    account_id,
                     token_hash=digest(token),
                     family_id=family_id or uuid.uuid4(),
                     expires_at=refresh_expires,
@@ -404,3 +401,21 @@ class AuthService:
             refresh_token=token,
             refresh_expires_at=refresh_expires,
         )
+
+
+def _first[T](items: list[T]) -> T | None:
+    return items[0] if items else None
+
+
+async def _password_of(auth: Authentication, account_id: uuid.UUID) -> PasswordCredential | None:
+    return _first(
+        await auth.passwords.get_list(PasswordCredentialFilter(account_id=account_id), page_size=1)
+    )
+
+
+async def _token(auth: Authentication, refresh_token: str) -> RefreshToken | None:
+    return _first(
+        await auth.refresh_tokens.get_list(
+            RefreshTokenFilter(token_hash=digest(refresh_token)), page_size=1
+        )
+    )

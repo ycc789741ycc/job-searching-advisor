@@ -13,6 +13,7 @@ from advisor.identity.domain import (
     FederatedSignInRejectedError,
     SignInFailure,
 )
+from advisor.identity.factory import create_auth_service, create_identity_service
 from advisor.identity.infra.google import (
     ATTEMPT_TTL_SECONDS as GOOGLE_ATTEMPT_TTL_SECONDS,
 )
@@ -47,4 +48,6 @@ __all__ = [
     "Provider",
     "Session",
     "SignInFailure",
+    "create_auth_service",
+    "create_identity_service",
 ]

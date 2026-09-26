@@ -20,7 +20,7 @@ import pytest_asyncio
 
 from advisor.assessment import AssessmentService
 from advisor.gapplan import GapPlanService, PlanStatus
-from advisor.identity import IdentityService
+from advisor.identity import create_identity_service
 from advisor.market import MarketService, create_market_service
 from advisor.profile import create_profile_service
 from advisor.rolemap import RoleMapService
@@ -80,7 +80,7 @@ async def world(
     stub = StubProvider()
     monkeypatch.setitem(REGISTRY, "anthropic", stub)
 
-    identity = IdentityService(database, default_monthly_cap_usd=Decimal("20"))
+    identity = create_identity_service(database, default_monthly_cap_usd=Decimal("20"))
     await identity.set_credential(
         account, provider="anthropic", model="claude-opus-5", api_key="sk-test", base_url=None
     )

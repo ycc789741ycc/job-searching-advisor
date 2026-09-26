@@ -9,7 +9,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 
-from advisor.identity import AuthService
+from advisor.identity import AuthService, create_auth_service
 from advisor.identity.domain import (
     MAX_FAILED_ATTEMPTS,
     FederatedSignInRejectedError,
@@ -28,7 +28,7 @@ PASSWORD = "a perfectly fine passphrase"
 
 @pytest.fixture
 def auth(database: Database) -> AuthService:
-    return AuthService(
+    return create_auth_service(
         database,
         secret=SECRET,
         issuer="jsa-test",

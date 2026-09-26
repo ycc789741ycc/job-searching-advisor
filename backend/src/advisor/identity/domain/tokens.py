@@ -15,6 +15,7 @@ presented, the family is compromised and the whole chain is revoked.
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -61,3 +62,13 @@ def access_token_expiry(*, now: datetime, ttl_seconds: int) -> datetime:
 
 def refresh_token_expiry(*, now: datetime, ttl_days: int) -> datetime:
     return now + timedelta(days=ttl_days)
+
+
+def digest(token: str) -> str:
+    """Refresh tokens are stored hashed.
+
+    SHA-256 rather than Argon2 on purpose: the token is 32 random bytes, so
+    there is no guessing to slow down — only a stored value to keep useless if
+    the database leaks.
+    """
+    return hashlib.sha256(token.encode()).hexdigest()
