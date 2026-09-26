@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
-from advisor.market import MarketService
+from advisor.market import MarketService, SqlMarketUnitOfWork
 from kernel.config import get_settings
 from kernel.db import Database
 from kernel.logging import get_logger
@@ -22,7 +22,8 @@ async def main() -> None:
     database = Database(settings)
     try:
         market = MarketService(
-            database, manual_refresh_per_day=settings.crawl_manual_refresh_per_day
+            SqlMarketUnitOfWork(database),
+            manual_refresh_per_day=settings.crawl_manual_refresh_per_day,
         )
         active, retired = await market.seed_baseline()
     finally:

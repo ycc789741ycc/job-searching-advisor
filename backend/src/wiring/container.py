@@ -19,7 +19,7 @@ from advisor.identity import (
     GoogleSignIn,
     IdentityService,
 )
-from advisor.market import CrawlIngest, MarketService
+from advisor.market import CrawlIngest, MarketService, SqlMarketUnitOfWork
 from advisor.profile import GitHubConnector, JiraConnector, ProfileService
 from advisor.resume import ResumeService
 from advisor.rolemap import RoleMapService
@@ -151,7 +151,10 @@ def build(settings: Settings | None = None) -> Container:
         http_timeout_seconds=settings.crawl_http_timeout_seconds,
         user_agent=settings.service_name,
     )
-    market = MarketService(database, manual_refresh_per_day=settings.crawl_manual_refresh_per_day)
+    market = MarketService(
+        SqlMarketUnitOfWork(database),
+        manual_refresh_per_day=settings.crawl_manual_refresh_per_day,
+    )
     rolemap = RoleMapService(
         database,
         market=market,

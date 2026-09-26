@@ -145,9 +145,10 @@ backend/src/
   advisor/    the application, one component per capability: identity · profile ·
               market · rolemap · assessment · target · gapplan · resume
                 __init__.py  the component's ONLY importable surface
-                service.py  use cases
-                domain/     pure rules: no I/O, no framework, no kernel
-                infra/      ORM models, repositories and adapters
+                service.py  use cases; stored data only via domain/repositories.py
+                domain/     entities, rules, events, repository interfaces: no I/O,
+                            no framework, no kernel
+                infra/      ORM models, mappers, SQL repositories + unit of work, adapters
                 jobs.py     use cases the worker runs
               market/crawling/  board adapters, discovery, politeness, one crawl run
 backend/tests/{unit,integration}/   each mirrors src/
@@ -161,7 +162,12 @@ routes and the composition root use only its `__init__.py`. Routes, task
 registration and entrypoints never live inside `advisor/`. `kernel/` stays
 outside the application on purpose (ADR 0009).
 
-Eighteen `import-linter` contracts in `backend/.importlinter` enforce those
+Repository interfaces are defined in each component's `domain/`, in entities and
+value objects — never ORM types — and implemented in `infra/` (ADR 0010).
+`market` has moved; the other components still query from `service.py` and move
+one at a time.
+
+Nineteen `import-linter` contracts in `backend/.importlinter` enforce those
 boundaries, and they run in CI. If one breaks, the design is wrong, not the
 contract.
 

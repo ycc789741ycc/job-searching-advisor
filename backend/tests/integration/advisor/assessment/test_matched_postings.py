@@ -16,7 +16,13 @@ from sqlalchemy import text
 
 from advisor.assessment import AssessmentService, FitView
 from advisor.identity import IdentityService
-from advisor.market import CrawlIngest, MarketService, NormalizedPosting, SourceKind
+from advisor.market import (
+    CrawlIngest,
+    MarketService,
+    NormalizedPosting,
+    SourceKind,
+    SqlMarketUnitOfWork,
+)
 from advisor.market.infra.models import CrawlSource
 from advisor.profile import ProfileService
 from advisor.rolemap import RoleMapService
@@ -75,7 +81,7 @@ async def test_top_matched_lists_open_postings_in_live_roles_by_role_fit(
         source_id = row.id
 
     try:
-        ingest = CrawlIngest(crawler_database)
+        ingest = CrawlIngest(SqlMarketUnitOfWork(crawler_database))
         await ingest.record_crawl(
             source_id,
             [
@@ -103,7 +109,7 @@ async def test_top_matched_lists_open_postings_in_live_roles_by_role_fit(
             )
             ids: dict[str, uuid.UUID] = {title: posting_id for title, posting_id in found.all()}
 
-        market = MarketService(database, manual_refresh_per_day=3)
+        market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
         await market.add_market(account, market_name)
         pasted = await market.paste_job_description(
             account,

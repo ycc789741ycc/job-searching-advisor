@@ -3,9 +3,12 @@
 Two audiences with very different rights:
 
 * ``MarketService`` — api and worker. Owner-zone reads and writes.
-* ``CrawlIngest`` — the crawler deployable. Shared zone only. It is given a
-  session built from the ``crawler_rw`` role, which has no grant on any user
-  schema, so a mistake here fails at the database rather than leaking.
+* ``CrawlIngest`` — the crawler deployable. Shared zone only. Its unit of work
+  runs on the ``crawler_rw`` role, which has no grant on any user schema, so a
+  mistake here fails at the database rather than leaking.
+
+Both reach stored data only through the repository interfaces in
+``advisor.market.domain`` (ADR 0010).
 
 The domain value objects the crawler needs are re-exported here, because the
 crawler may not import ``advisor.market.domain`` directly.
@@ -17,38 +20,34 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, or_, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.elements import ColumnElement
-
 from advisor.market.baseline import BASELINE_SOURCES, BaselineSource
 from advisor.market.domain import (
+    Company,
+    CompanySubscription,
     Coverage,
+    CrawlSource,
+    JobPosting,
+    MarketSelected,
+    MarketUnitOfWork,
     NormalizedPosting,
+    PostingsChanged,
+    PostingScope,
     PostingStatus,
+    PrivateJobPosting,
     SalaryBand,
     SalaryRange,
+    SharedMarket,
     SourceKind,
     SourceOrigin,
+    SubscriptionAdded,
     Visibility,
     band_from,
     canonical_key,
     normalize,
+    refresh_allowed,
 )
-from advisor.market.infra.models import (
-    Company,
-    CompanySubscription,
-    CrawlSource,
-    JobPosting,
-    ManualRefreshLog,
-    MarketPreference,
-    PostingEmbedding,
-    PrivateJobPosting,
-)
-from kernel.db import Database
-from kernel.db.base import utcnow
+from kernel.clock import utcnow
 from kernel.errors import NotFoundError, RateLimitedError, ValidationError
-from kernel.outbox import EventName, emit
 
 __all__ = [
     "BASELINE_SOURCES",
@@ -115,26 +114,21 @@ class PostingView:
 class CrawlIngest:
     """What the crawler may do. Shared zone only; no user data, ever."""
 
-    def __init__(self, database: Database) -> None:
-        self._db = database
+    def __init__(self, uow: MarketUnitOfWork) -> None:
+        self._uow = uow
 
     async def due_sources(self) -> list[CrawlSourceView]:
-        async with self._db.shared() as session:
-            rows = await session.execute(
-                select(CrawlSource, Company.name)
-                .outerjoin(Company, CrawlSource.company_id == Company.id)
-                .where(CrawlSource.status == "active")
-            )
+        async with self._uow.shared() as market:
             return [
                 CrawlSourceView(
-                    id=source.id,
-                    kind=source.kind,
-                    endpoint=source.endpoint,
-                    company_id=source.company_id,
-                    company_name=company_name,
-                    market=source.market,
+                    id=due.source.id,
+                    kind=due.source.kind,
+                    endpoint=due.source.endpoint,
+                    company_id=due.source.company_id,
+                    company_name=due.company_name,
+                    market=due.source.market,
                 )
-                for source, company_name in rows.all()
+                for due in await market.sources.due()
             ]
 
     async def record_crawl(
@@ -145,80 +139,53 @@ class CrawlIngest:
         error: str | None = None,
     ) -> tuple[int, int]:
         """Upsert what was seen, expire what was not. Returns (upserted, expired)."""
-        async with self._db.shared() as session:
-            source = await session.get(CrawlSource, source_id)
+        async with self._uow.shared() as market:
+            source = await market.sources.get(source_id)
             if source is None:
                 raise NotFoundError("crawl source not found", source_id=str(source_id))
-            source.last_fetched_at = utcnow()
-            source.last_error = error
+            source.record_fetch(utcnow(), error)
+            await market.sources.save(source)
             if error is not None:
                 return (0, 0)
 
             seen_keys: set[str] = set()
             for posting in postings:
-                company = await _ensure_company(session, posting.company_name)
-                await _upsert_posting(session, source_id, company.id, posting)
+                company = await _ensure_company(market, posting.company_name)
+                await _upsert_posting(market, source_id, company.id, posting)
                 seen_keys.add(posting.canonical_key)
 
-            expired = await _expire_unseen(session, source_id, seen_keys)
+            expired = await market.postings.expire_unseen(source_id, seen_keys)
 
-            await emit(
-                session,
-                EventName.POSTINGS_CHANGED,
-                {
-                    # Markets and companies only. The crawler must not work out
-                    # which users are affected — the dispatcher fans that out.
-                    "company_id": str(source.company_id) if source.company_id else None,
-                    "market": source.market,
-                    "seen": len(seen_keys),
-                    "expired": expired,
-                },
+            market.record(
+                PostingsChanged(
+                    company_id=source.company_id,
+                    market=source.market,
+                    seen=len(seen_keys),
+                    expired=expired,
+                )
             )
             return (len(seen_keys), expired)
 
     async def postings_needing_embeddings(
         self, model_name: str, limit: int = 200
     ) -> list[tuple[uuid.UUID, str]]:
-        async with self._db.shared() as session:
-            rows = await session.execute(
-                select(JobPosting.id, JobPosting.title, JobPosting.location, JobPosting.description)
-                .outerjoin(
-                    PostingEmbedding,
-                    (PostingEmbedding.job_posting_id == JobPosting.id)
-                    & (PostingEmbedding.model_name == model_name),
-                )
-                .where(PostingEmbedding.job_posting_id.is_(None))
-                .limit(limit)
-            )
-            return [
-                (
-                    row.id,
-                    "\n".join(
-                        part
-                        for part in (row.title, row.title, row.location, row.description)
-                        if part
-                    ),
-                )
-                for row in rows.all()
-            ]
+        async with self._uow.shared() as market:
+            postings = await market.postings.needing_embeddings(model_name, limit)
+        # Title carries most of the signal, so it leads, twice.
+        return [(p.id, "\n".join(part for part in _embedding_parts(p) if part)) for p in postings]
 
     async def store_embeddings(
         self, model_name: str, vectors: dict[uuid.UUID, list[float]]
     ) -> None:
-        async with self._db.shared() as session:
-            for posting_id, vector in vectors.items():
-                session.add(
-                    PostingEmbedding(
-                        job_posting_id=posting_id, model_name=model_name, vector=vector
-                    )
-                )
+        async with self._uow.shared() as market:
+            await market.postings.add_embeddings(model_name, vectors)
 
 
 class MarketService:
     """Subscriptions, market preferences and pasted JDs. Owner zone."""
 
-    def __init__(self, database: Database, *, manual_refresh_per_day: int) -> None:
-        self._db = database
+    def __init__(self, uow: MarketUnitOfWork, *, manual_refresh_per_day: int) -> None:
+        self._uow = uow
         self._manual_refresh_per_day = manual_refresh_per_day
 
     async def owners_affected_by(
@@ -232,38 +199,25 @@ class MarketService:
         market changes (docs/technical_boundaries.md section 2).
         """
         affected: set[uuid.UUID] = set()
-        async with self._db.fanout() as session:
+        async with self._uow.fanout() as watchers:
             if company_id is not None:
-                rows = await session.execute(
-                    select(CompanySubscription.owner_id)
-                    .where(CompanySubscription.company_id == company_id)
-                    .distinct()
-                )
-                affected.update(rows.scalars())
+                affected |= await watchers.of_company(company_id)
             if market:
-                rows = await session.execute(
-                    select(MarketPreference.owner_id)
-                    .where(MarketPreference.market == market)
-                    .distinct()
-                )
-                affected.update(rows.scalars())
+                affected |= await watchers.of_market(market)
         return sorted(affected)
 
     async def subscriptions(self, owner_id: uuid.UUID) -> list[CompanySubscriptionView]:
-        async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(CompanySubscription).where(CompanySubscription.owner_id == owner_id)
-            )
-            return [_subscription_view(row) for row in rows.scalars()]
+        async with self._uow.for_owner(owner_id) as mine:
+            return [_subscription_view(s) for s in await mine.subscriptions.all()]
 
     async def subscription(
         self, owner_id: uuid.UUID, subscription_id: uuid.UUID
     ) -> CompanySubscriptionView:
-        async with self._db.for_user(owner_id) as session:
-            row = await session.get(CompanySubscription, subscription_id)
-            if row is None or row.owner_id != owner_id:
+        async with self._uow.for_owner(owner_id) as mine:
+            subscription = await mine.subscriptions.get(subscription_id)
+            if subscription is None:
                 raise NotFoundError("subscription not found", subscription_id=str(subscription_id))
-            return _subscription_view(row)
+            return _subscription_view(subscription)
 
     async def subscribe(
         self,
@@ -286,103 +240,71 @@ class MarketService:
         if link is not None and not link.lower().startswith(("https://", "http://")):
             raise ValidationError("a link must start with http:// or https://")
 
-        async with self._db.shared() as shared:
-            company = await _ensure_company(shared, name)
-            company_id, resolved_name = company.id, company.name
+        async with self._uow.shared() as market:
+            company = await _ensure_company(market, name)
 
-        async with self._db.for_user(owner_id) as session:
-            existing = await session.execute(
-                select(CompanySubscription).where(
-                    CompanySubscription.owner_id == owner_id,
-                    CompanySubscription.company_id == company_id,
-                    CompanySubscription.role_title == title,
+        async with self._uow.for_owner(owner_id) as mine:
+            subscription = await mine.subscriptions.find(company.id, title)
+            if subscription is not None:
+                subscription.resubscribe(role_id=role_id, url=link)
+                await mine.subscriptions.save(subscription)
+                return _subscription_view(subscription)
+
+            # Coverage belongs to the company's board, so a new role at an
+            # already-watched company starts from what is known about it.
+            known = await mine.subscriptions.at_company(company.id)
+            subscription = CompanySubscription.new(
+                owner_id=owner_id,
+                company=company,
+                role_title=title,
+                role_id=role_id,
+                url=link,
+                coverage=known[0].coverage if known else Coverage.MANUAL,
+            )
+            await mine.subscriptions.add(subscription)
+            mine.record(
+                SubscriptionAdded(
+                    owner_id=owner_id, company_id=company.id, company_name=company.name
                 )
             )
-            subscription = existing.scalar_one_or_none()
-            if subscription is not None:
-                subscription.role_id = role_id or subscription.role_id
-                subscription.url = link or subscription.url
-                await session.flush()
-            else:
-                # Coverage belongs to the company's board, so a new role at an
-                # already-watched company starts from what is known about it.
-                known = await session.execute(
-                    select(CompanySubscription.coverage).where(
-                        CompanySubscription.owner_id == owner_id,
-                        CompanySubscription.company_id == company_id,
-                    )
-                )
-                coverage = known.scalars().first() or str(Coverage.MANUAL)
-                subscription = CompanySubscription(
-                    owner_id=owner_id,
-                    company_id=company_id,
-                    company_name=resolved_name,
-                    role_title=title,
-                    role_id=role_id,
-                    url=link,
-                    coverage=coverage,
-                )
-                session.add(subscription)
-                await session.flush()
-                await emit(
-                    session,
-                    EventName.SUBSCRIPTION_ADDED,
-                    {"company_id": str(company_id), "company_name": resolved_name},
-                    owner_id=owner_id,
-                )
             return _subscription_view(subscription)
 
     async def set_coverage(
         self, owner_id: uuid.UUID, company_id: uuid.UUID, coverage: Coverage
     ) -> None:
-        async with self._db.for_user(owner_id) as session:
-            await session.execute(
-                update(CompanySubscription)
-                .where(
-                    CompanySubscription.owner_id == owner_id,
-                    CompanySubscription.company_id == company_id,
-                )
-                .values(coverage=str(coverage))
-            )
+        async with self._uow.for_owner(owner_id) as mine:
+            await mine.subscriptions.set_coverage(company_id, coverage)
+
+    async def mark_refreshed(self, owner_id: uuid.UUID, company_id: uuid.UUID) -> None:
+        """Every role the user watches at this company shares its board, so a
+        re-crawl refreshes them all."""
+        async with self._uow.for_owner(owner_id) as mine:
+            refreshed_at = utcnow()
+            for subscription in await mine.subscriptions.at_company(company_id):
+                subscription.last_refreshed_at = refreshed_at
+                await mine.subscriptions.save(subscription)
 
     async def unsubscribe(self, owner_id: uuid.UUID, subscription_id: uuid.UUID) -> None:
-        async with self._db.for_user(owner_id) as session:
-            subscription = await session.get(CompanySubscription, subscription_id)
-            if subscription is not None and subscription.owner_id == owner_id:
-                await session.delete(subscription)
+        async with self._uow.for_owner(owner_id) as mine:
+            await mine.subscriptions.remove(subscription_id)
 
     async def markets(self, owner_id: uuid.UUID) -> list[str]:
-        async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(MarketPreference.market).where(MarketPreference.owner_id == owner_id)
-            )
-            return sorted(rows.scalars())
+        async with self._uow.for_owner(owner_id) as mine:
+            return await mine.markets.all()
 
     async def add_market(self, owner_id: uuid.UUID, market: str) -> list[str]:
         value = market.strip()
         if not value:
             raise ValidationError("a market is required")
-        async with self._db.for_user(owner_id) as session:
-            existing = await session.execute(
-                select(MarketPreference).where(
-                    MarketPreference.owner_id == owner_id, MarketPreference.market == value
-                )
-            )
-            if existing.scalar_one_or_none() is None:
-                session.add(MarketPreference(owner_id=owner_id, market=value))
-                await emit(session, EventName.MARKET_SELECTED, {"market": value}, owner_id=owner_id)
+        async with self._uow.for_owner(owner_id) as mine:
+            if not await mine.markets.has(value):
+                await mine.markets.add(value)
+                mine.record(MarketSelected(owner_id=owner_id, market=value))
         return await self.markets(owner_id)
 
     async def remove_market(self, owner_id: uuid.UUID, market: str) -> list[str]:
-        async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(MarketPreference).where(
-                    MarketPreference.owner_id == owner_id, MarketPreference.market == market
-                )
-            )
-            preference = rows.scalar_one_or_none()
-            if preference is not None:
-                await session.delete(preference)
+        async with self._uow.for_owner(owner_id) as mine:
+            await mine.markets.remove(market)
         return await self.markets(owner_id)
 
     async def paste_job_description(
@@ -405,41 +327,35 @@ class MarketService:
 
         # A private copy may link to a matching crawled posting so the user gets
         # weekly updates. Nothing flows back the other way.
-        async with self._db.shared() as shared:
-            match = await shared.execute(
-                select(JobPosting.id).where(JobPosting.canonical_key == key)
-            )
-            shared_posting_id = match.scalar_one_or_none()
+        async with self._uow.shared() as market:
+            match = await market.postings.by_canonical_key(key)
 
-        async with self._db.for_user(owner_id) as session:
-            posting = PrivateJobPosting(
-                owner_id=owner_id,
-                canonical_key=key,
-                company_name=company_name.strip(),
-                title=title.strip(),
-                location=location,
-                description=description,
-                url=url,
-                shared_posting_id=shared_posting_id,
-            )
-            session.add(posting)
-            await session.flush()
-            return _private_posting_view(posting)
+        posting = PrivateJobPosting(
+            id=uuid.uuid4(),
+            owner_id=owner_id,
+            canonical_key=key,
+            company_name=company_name.strip(),
+            title=title.strip(),
+            location=location,
+            description=description,
+            url=url,
+            shared_posting_id=match.id if match is not None else None,
+        )
+        async with self._uow.for_owner(owner_id) as mine:
+            await mine.private_postings.add(posting)
+        return _private_posting_view(posting)
 
     async def private_postings(self, owner_id: uuid.UUID) -> list[PostingView]:
-        async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(PrivateJobPosting).where(PrivateJobPosting.owner_id == owner_id)
-            )
-            return [_private_posting_view(row) for row in rows.scalars()]
+        async with self._uow.for_owner(owner_id) as mine:
+            return [_private_posting_view(p) for p in await mine.private_postings.all()]
 
     async def private_posting(self, owner_id: uuid.UUID, posting_id: uuid.UUID) -> PostingView:
         """One pasted JD. Another user's is simply not found: it is behind RLS."""
-        async with self._db.for_user(owner_id) as session:
-            row = await session.get(PrivateJobPosting, posting_id)
-            if row is None or row.owner_id != owner_id:
+        async with self._uow.for_owner(owner_id) as mine:
+            posting = await mine.private_postings.get(posting_id)
+            if posting is None:
                 raise NotFoundError("job description not found", posting_id=str(posting_id))
-            return _private_posting_view(row)
+            return _private_posting_view(posting)
 
     async def postings_in_scope(self, owner_id: uuid.UUID) -> list[PostingView]:
         """Every posting this user's role map is built from.
@@ -452,36 +368,17 @@ class MarketService:
         """
         markets = await self.markets(owner_id)
         subscriptions = await self.subscriptions(owner_id)
-        company_ids = [s.company_id for s in subscriptions]
+        scope = PostingScope(
+            company_ids=tuple(s.company_id for s in subscriptions), markets=tuple(markets)
+        )
 
-        async with self._db.shared() as session:
-            query = (
-                select(JobPosting, Company.name)
-                .join(Company, JobPosting.company_id == Company.id)
-                .where(JobPosting.status == str(PostingStatus.OPEN))
-            )
-            conditions: list[ColumnElement[bool]] = []
-            if company_ids:
-                conditions.append(JobPosting.company_id.in_(company_ids))
-            if markets:
-                conditions.append(JobPosting.location.in_(markets))
-            else:
-                # With markets chosen, baseline postings in them are already
-                # in scope through the location match above.
-                conditions.append(
-                    JobPosting.crawl_source_id.in_(
-                        select(CrawlSource.id).where(
-                            CrawlSource.origin == str(SourceOrigin.BASELINE)
-                        )
-                    )
-                )
-            query = query.where(_any_of(conditions))
-            rows = await session.execute(query)
-            shared_rows = [
-                _shared_posting_view(posting, company_name) for posting, company_name in rows.all()
+        async with self._uow.shared() as market:
+            shared = [
+                _shared_posting_view(posting, company_name)
+                for posting, company_name in await market.postings.open_in_scope(scope)
             ]
 
-        return shared_rows + await self.private_postings(owner_id)
+        return shared + await self.private_postings(owner_id)
 
     async def scope_with_vectors(
         self, owner_id: uuid.UUID, model_name: str
@@ -500,24 +397,11 @@ class MarketService:
 
         vectors: dict[uuid.UUID, list[float]] = {}
         if shared_ids:
-            async with self._db.shared() as session:
-                rows = await session.execute(
-                    select(PostingEmbedding.job_posting_id, PostingEmbedding.vector).where(
-                        PostingEmbedding.job_posting_id.in_(shared_ids),
-                        PostingEmbedding.model_name == model_name,
-                    )
-                )
-                vectors = {row[0]: list(row[1]) for row in rows.all()}
+            async with self._uow.shared() as market:
+                vectors = await market.postings.embeddings(shared_ids, model_name)
 
-        async with self._db.for_user(owner_id) as session:
-            private_rows = await session.execute(
-                select(PrivateJobPosting.id, PrivateJobPosting.vector).where(
-                    PrivateJobPosting.owner_id == owner_id,
-                    PrivateJobPosting.vector.is_not(None),
-                )
-            )
-            for posting_id, vector in private_rows.all():
-                vectors[posting_id] = list(vector)
+        async with self._uow.for_owner(owner_id) as mine:
+            vectors.update(await mine.private_postings.vectors())
 
         return [
             (
@@ -531,11 +415,9 @@ class MarketService:
     async def store_private_vectors(
         self, owner_id: uuid.UUID, vectors: dict[uuid.UUID, list[float]]
     ) -> None:
-        async with self._db.for_user(owner_id) as session:
+        async with self._uow.for_owner(owner_id) as mine:
             for posting_id, vector in vectors.items():
-                posting = await session.get(PrivateJobPosting, posting_id)
-                if posting is not None and posting.owner_id == owner_id:
-                    posting.vector = vector
+                await mine.private_postings.set_vector(posting_id, vector)
 
     async def seed_baseline(
         self, sources: tuple[BaselineSource, ...] = BASELINE_SOURCES
@@ -548,38 +430,74 @@ class MarketService:
         the same board either way.
         """
         wanted = {(s.kind, s.endpoint) for s in sources}
-        async with self._db.shared() as session:
-            for source in sources:
-                company = await _ensure_company(session, source.company_name)
-                existing = await session.execute(
-                    select(CrawlSource).where(
-                        CrawlSource.kind == source.kind, CrawlSource.endpoint == source.endpoint
-                    )
-                )
-                row = existing.scalar_one_or_none()
-                if row is None:
-                    session.add(
-                        CrawlSource(
-                            kind=source.kind,
+        async with self._uow.shared() as market:
+            for listed in sources:
+                company = await _ensure_company(market, listed.company_name)
+                source = await market.sources.by_kind_and_endpoint(listed.kind, listed.endpoint)
+                if source is None:
+                    await market.sources.add(
+                        CrawlSource.board(
+                            kind=listed.kind,
+                            endpoint=listed.endpoint,
                             company_id=company.id,
-                            endpoint=source.endpoint,
-                            origin=str(SourceOrigin.BASELINE),
+                            origin=SourceOrigin.BASELINE,
                         )
                     )
                 else:
-                    row.origin = str(SourceOrigin.BASELINE)
-                    row.status = "active"
-                    row.company_id = row.company_id or company.id
+                    source.make_baseline(company.id)
+                    await market.sources.save(source)
 
-            listed = await session.execute(
-                select(CrawlSource).where(CrawlSource.origin == str(SourceOrigin.BASELINE))
-            )
             retired = 0
-            for row in listed.scalars():
-                if (row.kind, row.endpoint) not in wanted and row.status != "retired":
-                    row.status = "retired"
+            for source in await market.sources.baseline():
+                if (source.kind, source.endpoint) not in wanted and source.retire():
+                    await market.sources.save(source)
                     retired += 1
         return len(sources), retired
+
+    async def register_board(self, company_id: uuid.UUID, *, kind: str, endpoint: str) -> None:
+        """Crawl a board found for a watched company, unless it is already known."""
+        async with self._uow.shared() as market:
+            if await market.sources.by_endpoint(endpoint) is None:
+                await market.sources.add(
+                    CrawlSource.board(
+                        kind=kind,
+                        endpoint=endpoint,
+                        company_id=company_id,
+                        origin=SourceOrigin.DEMAND,
+                    )
+                )
+
+    async def watched_boards(self) -> list[tuple[uuid.UUID, str, str | None]]:
+        """One entry per watched company, with the first link anyone gave for it.
+
+        A cross-user read, through the fan-out transaction. Only the company and
+        the link cross over — never who gave them — so the crawler holds no user
+        data and cannot infer any.
+        """
+        async with self._uow.fanout() as watchers:
+            boards = await watchers.watched_boards()
+        by_company: dict[uuid.UUID, tuple[str, str | None]] = {}
+        for company_id, company_name, url in boards:
+            name, known_url = by_company.get(company_id, (company_name, None))
+            by_company[company_id] = (name, known_url or url)
+        return [(cid, name, url) for cid, (name, url) in by_company.items()]
+
+    async def company_needing_source(self, company_id: uuid.UUID, fallback_name: str) -> str | None:
+        """The name to look for a board under, or None when the company already
+        has a crawl source."""
+        async with self._uow.shared() as market:
+            if await market.sources.exists_for_company(company_id):
+                return None
+            company = await market.companies.get(company_id)
+            return company.name if company is not None else fallback_name
+
+    async def add_demand_source(self, company_id: uuid.UUID, *, kind: str, endpoint: str) -> None:
+        async with self._uow.shared() as market:
+            await market.sources.add(
+                CrawlSource.board(
+                    kind=kind, endpoint=endpoint, company_id=company_id, origin=SourceOrigin.DEMAND
+                )
+            )
 
     async def request_manual_refresh(self, owner_id: uuid.UUID, company_id: uuid.UUID) -> None:
         """Re-crawl one watched company now, within a per-day cap.
@@ -588,144 +506,67 @@ class MarketService:
         subscribing.
         """
         since = utcnow() - timedelta(days=1)
-        async with self._db.for_user(owner_id) as session:
-            used = await session.execute(
-                select(func.count())
-                .select_from(ManualRefreshLog)
-                .where(
-                    ManualRefreshLog.owner_id == owner_id,
-                    ManualRefreshLog.requested_at >= since,
-                )
-            )
-            if int(used.scalar_one()) >= self._manual_refresh_per_day:
+        async with self._uow.for_owner(owner_id) as mine:
+            used = await mine.refreshes.count_since(since)
+            if not refresh_allowed(used_today=used, per_day=self._manual_refresh_per_day):
                 raise RateLimitedError(
                     "you have used today's manual refreshes; the weekly crawl still runs",
                     limit=self._manual_refresh_per_day,
                 )
-            session.add(ManualRefreshLog(owner_id=owner_id, company_id=company_id))
+            await mine.refreshes.record(company_id)
 
     async def salary_band(self, owner_id: uuid.UUID, posting_ids: list[uuid.UUID]) -> object:
-        async with self._db.shared() as session:
-            rows = await session.execute(
-                select(
-                    JobPosting.salary_min, JobPosting.salary_max, JobPosting.salary_currency
-                ).where(
-                    JobPosting.id.in_(posting_ids),
-                    JobPosting.salary_min.is_not(None),
-                    JobPosting.salary_currency.is_not(None),
-                )
-            )
-            return band_from([(r[0], r[1] or r[0], r[2]) for r in rows.all()])
+        async with self._uow.shared() as market:
+            ranges = await market.postings.salary_ranges(posting_ids)
+        return band_from([(r.min_amount, r.max_amount, r.currency) for r in ranges])
 
 
 # --- helpers ---------------------------------------------------------------
 
 
-def _any_of(conditions: list[ColumnElement[bool]]) -> ColumnElement[bool]:
-    """A posting is in scope if it matches a watched company *or* a chosen market."""
-    return or_(*conditions) if len(conditions) > 1 else conditions[0]
-
-
-async def _ensure_company(session: AsyncSession, name: str) -> Company:
-    normalized = normalize(name)
-    existing = await session.execute(select(Company).where(Company.normalized_name == normalized))
-    company = existing.scalar_one_or_none()
+async def _ensure_company(market: SharedMarket, name: str) -> Company:
+    company = await market.companies.by_normalized_name(normalize(name))
     if company is None:
-        company = Company(name=name.strip(), normalized_name=normalized)
-        session.add(company)
-        await session.flush()
+        company = Company.named(name)
+        await market.companies.add(company)
     return company
 
 
 async def _upsert_posting(
-    session: AsyncSession,
+    market: SharedMarket,
     source_id: uuid.UUID,
     company_id: uuid.UUID,
     posting: NormalizedPosting,
 ) -> None:
-    existing = await session.execute(
-        select(JobPosting).where(JobPosting.canonical_key == posting.canonical_key)
-    )
-    row = existing.scalar_one_or_none()
     now = utcnow()
-    if row is None:
-        session.add(
-            JobPosting(
-                canonical_key=posting.canonical_key,
-                company_id=company_id,
-                crawl_source_id=source_id,
-                title=posting.title,
-                location=posting.location,
-                description=posting.description,
-                url=posting.url,
-                source_kind=str(posting.source_kind),
-                posted_on=posting.posted_on,
-                salary_min=posting.salary.min_amount if posting.salary else None,
-                salary_max=posting.salary.max_amount if posting.salary else None,
-                salary_currency=posting.salary.currency if posting.salary else None,
-                status=str(PostingStatus.OPEN),
-                first_seen_at=now,
-                last_seen_at=now,
-            )
+    existing = await market.postings.by_canonical_key(posting.canonical_key)
+    if existing is None:
+        await market.postings.add(
+            JobPosting.first_seen(posting, company_id=company_id, source_id=source_id, at=now)
         )
         return
-
-    row.last_seen_at = now
-    row.status = str(PostingStatus.OPEN)
-    # The same opening can arrive from several sources — a company's Greenhouse
-    # board and its own career page carrying JSON-LD. Dedup collapses them into
-    # one row, and that row belongs to whichever source saw it last, so expiry
-    # (which is scoped per source) stays coherent instead of leaving a posting
-    # that no crawl is responsible for.
-    row.crawl_source_id = source_id
-    row.title = posting.title
-    row.description = posting.description
-    row.url = posting.url
-    if posting.salary is not None:
-        row.salary_min = posting.salary.min_amount
-        row.salary_max = posting.salary.max_amount
-        row.salary_currency = posting.salary.currency
+    existing.seen_again(posting, source_id=source_id, at=now)
+    await market.postings.save(existing)
 
 
-async def _expire_unseen(session: AsyncSession, source_id: uuid.UUID, seen_keys: set[str]) -> int:
-    """A posting missing from a crawl is marked expired, never deleted."""
-    query = (
-        update(JobPosting)
-        .where(
-            JobPosting.crawl_source_id == source_id,
-            JobPosting.status == str(PostingStatus.OPEN),
-        )
-        .values(status=str(PostingStatus.EXPIRED))
-    )
-    if seen_keys:
-        query = query.where(JobPosting.canonical_key.notin_(seen_keys))
-    result = await session.execute(query)
-    return int(getattr(result, "rowcount", 0) or 0)
+def _embedding_parts(posting: JobPosting) -> tuple[str | None, ...]:
+    return (posting.title, posting.title, posting.location, posting.description)
 
 
-def _subscription_view(row: CompanySubscription) -> CompanySubscriptionView:
+def _subscription_view(subscription: CompanySubscription) -> CompanySubscriptionView:
     return CompanySubscriptionView(
-        id=row.id,
-        company_id=row.company_id,
-        company_name=row.company_name,
-        role_title=row.role_title,
-        role_id=row.role_id,
-        url=row.url,
-        coverage=Coverage(row.coverage),
-        last_refreshed_at=row.last_refreshed_at,
+        id=subscription.id,
+        company_id=subscription.company_id,
+        company_name=subscription.company_name,
+        role_title=subscription.role_title,
+        role_id=subscription.role_id,
+        url=subscription.url,
+        coverage=subscription.coverage,
+        last_refreshed_at=subscription.last_refreshed_at,
     )
 
 
 def _shared_posting_view(posting: JobPosting, company_name: str) -> PostingView:
-    salary = (
-        SalaryRange(
-            min_amount=posting.salary_min,
-            max_amount=posting.salary_max or posting.salary_min,
-            currency=posting.salary_currency or "",
-        )
-        if posting.salary_min is not None
-        else None
-    )
     return PostingView(
         id=posting.id,
         company_name=company_name,
@@ -734,7 +575,7 @@ def _shared_posting_view(posting: JobPosting, company_name: str) -> PostingView:
         url=posting.url,
         description=posting.description,
         visibility=Visibility.SHARED,
-        salary=salary,
+        salary=posting.salary,
         company_id=posting.company_id,
         source_kind=posting.source_kind,
     )

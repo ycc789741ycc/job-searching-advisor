@@ -20,7 +20,7 @@ import pytest_asyncio
 
 from advisor.assessment import AssessmentService
 from advisor.identity import IdentityService
-from advisor.market import MarketService
+from advisor.market import MarketService, SqlMarketUnitOfWork
 from advisor.profile import ProfileService
 from advisor.resume import (
     Options,
@@ -115,7 +115,7 @@ async def world(
         answer="I led it across two teams",
     )
     gateway = AiGateway(settings=settings, credentials=identity, budget=identity)
-    market = MarketService(database, manual_refresh_per_day=3)
+    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
     await market.add_market(account, f"Résumé market {uuid.uuid4().hex[:8]}")
     rolemap = RoleMapService(
         database,
