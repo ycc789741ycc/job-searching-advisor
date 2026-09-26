@@ -23,7 +23,7 @@ from advisor.gapplan import GapPlanService, PlanStatus
 from advisor.identity import create_identity_service
 from advisor.market import MarketService, create_market_service
 from advisor.profile import create_profile_service
-from advisor.rolemap import RoleMapService
+from advisor.rolemap import create_rolemap_service
 from advisor.target import TargetKind, TargetRef, TargetService
 from kernel.ai_gateway import AiGateway
 from kernel.ai_gateway.providers import REGISTRY, Completion, Request
@@ -103,7 +103,7 @@ async def world(
     market = create_market_service(database, manual_refresh_per_day=3)
     # A market of its own keeps the platform baseline out of this user's scope.
     await market.add_market(account, f"Plan market {uuid.uuid4().hex[:8]}")
-    rolemap = RoleMapService(
+    rolemap = create_rolemap_service(
         database,
         market=market,
         profile=profile,

@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 
 from advisor.market import MarketService, PostingView, Visibility, band_from
 from advisor.profile import ProfileService
@@ -21,29 +20,36 @@ from advisor.rolemap.domain import (
     DEFAULT_ROLE_COUNT,
     MIN_POSTINGS_FOR_A_ROLE,
     BarBasis,
+    HiringBar,
+    LineageEntry,
+    Reconciliation,
+    Role,
     RoleChange,
+    RoleCountChanged,
     RoleCountError,
+    RoleFilter,
+    RoleMapSetting,
+    RoleMapSettingFilter,
+    RoleMapUnitOfWork,
+    RoleMember,
+    RoleMemberFilter,
+    RoleRequirement,
+    RoleRequirementFilter,
+    RoleRequirementsChanged,
+    RoleSplitOrMerged,
+    RolesReclustered,
     blend,
     max_role_count,
     rank_by_fit,
     reconcile,
     validate_role_count,
 )
-from advisor.rolemap.infra.models import (
-    Role,
-    RoleLineage,
-    RoleMapSetting,
-    RoleMember,
-    RoleRequirement,
-)
 from kernel.ai_gateway import AiGateway
 from kernel.ai_gateway import load as load_template
-from kernel.db import Database
-from kernel.db.base import utcnow
+from kernel.clock import utcnow
 from kernel.embeddings import cluster, embed
 from kernel.errors import ValidationError
 from kernel.logging import get_logger
-from kernel.outbox import EventName, emit
 
 __all__ = ["RequirementView", "RoleMapService", "RoleView"]
 
@@ -108,34 +114,35 @@ class RoleView:
 class RoleMapService:
     def __init__(
         self,
-        database: Database,
+        uow: RoleMapUnitOfWork,
         *,
         market: MarketService,
         profile: ProfileService,
         gateway: AiGateway,
         embedding_model: str,
     ) -> None:
-        self._db = database
+        self._uow = uow
         self._market = market
         self._profile = profile
         self._gateway = gateway
         self._embedding_model = embedding_model
 
     async def roles(self, owner_id: uuid.UUID) -> list[RoleView]:
-        async with self._db.for_user(owner_id) as session:
-            role_rows = await session.execute(
-                select(Role).where(Role.owner_id == owner_id, Role.retired_at.is_(None))
-            )
-            roles = list(role_rows.scalars())
-            requirement_rows = await session.execute(
-                select(RoleRequirement).where(RoleRequirement.owner_id == owner_id)
-            )
-            by_role: dict[uuid.UUID, list[RequirementView]] = {}
-            for row in requirement_rows.scalars():
-                by_role.setdefault(row.role_id, []).append(
-                    RequirementView(row.statement, row.weight, row.expected_level)
+        """The live roles, newest first, each with its requirements, weightiest
+        first. One user's map: bounded by their role count, read whole."""
+        async with self._uow.for_owner(owner_id) as mine:
+            roles = await mine.roles.get_list(RoleFilter(is_retired=False))
+            requirements = (
+                await mine.requirements.get_list(
+                    RoleRequirementFilter(role_ids=tuple(r.id for r in roles))
                 )
-            return [_role_view(role, tuple(by_role.get(role.id, ()))) for role in roles]
+                if roles
+                else []
+            )
+        by_role: dict[uuid.UUID, list[RoleRequirement]] = {}
+        for requirement in requirements:
+            by_role.setdefault(requirement.role_id, []).append(requirement)
+        return [_role_view(role, by_role.get(role.id, [])) for role in roles]
 
     async def role_postings(self, owner_id: uuid.UUID) -> list[tuple[RoleView, list[PostingView]]]:
         """Each analysed role with the open postings grouped into it.
@@ -146,16 +153,13 @@ class RoleMapService:
         roles = await self.roles(owner_id)
         if not roles:
             return []
-        async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(RoleMember.role_id, RoleMember.posting_key).where(
-                    RoleMember.owner_id == owner_id,
-                    RoleMember.role_id.in_([role.id for role in roles]),
-                )
+        async with self._uow.for_owner(owner_id) as mine:
+            members = await mine.members.get_list(
+                RoleMemberFilter(role_ids=tuple(role.id for role in roles))
             )
-            keys_by_role: dict[uuid.UUID, list[str]] = {}
-            for role_id, key in rows.all():
-                keys_by_role.setdefault(role_id, []).append(key)
+        keys_by_role: dict[uuid.UUID, list[str]] = {}
+        for member in members:
+            keys_by_role.setdefault(member.role_id, []).append(member.posting_key)
 
         in_scope = {_posting_key(p): p for p in await self._market.postings_in_scope(owner_id)}
         return [
@@ -165,33 +169,27 @@ class RoleMapService:
 
     async def role_count(self, owner_id: uuid.UUID) -> int:
         """How many roles this user's role map analyses (ADR 0003)."""
-        async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(RoleMapSetting.role_count).where(RoleMapSetting.owner_id == owner_id)
-            )
-            stored = rows.scalar_one_or_none()
-        return DEFAULT_ROLE_COUNT if stored is None else stored
+        async with self._uow.for_owner(owner_id) as mine:
+            setting = _first(await mine.settings.get_list(RoleMapSettingFilter(), page_size=1))
+        return DEFAULT_ROLE_COUNT if setting is None else setting.role_count
 
     async def set_role_count(self, owner_id: uuid.UUID, role_count: int) -> int:
         """Store the user's k. The caller has already shown the estimate for it
         and had it confirmed, so a change queues a recluster."""
         role_count = _checked(role_count)
-        async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(RoleMapSetting).where(RoleMapSetting.owner_id == owner_id)
-            )
-            setting = rows.scalar_one_or_none()
+        async with self._uow.for_owner(owner_id) as mine:
+            setting = _first(await mine.settings.get_list(RoleMapSettingFilter(), page_size=1))
             previous = DEFAULT_ROLE_COUNT if setting is None else setting.role_count
             if setting is None:
-                session.add(RoleMapSetting(owner_id=owner_id, role_count=role_count))
+                await mine.settings.create(
+                    RoleMapSetting(id=uuid.uuid4(), owner_id=owner_id, role_count=role_count)
+                )
             else:
                 setting.role_count = role_count
+                await mine.settings.update(setting)
             if role_count != previous:
-                await emit(
-                    session,
-                    EventName.ROLE_COUNT_CHANGED,
-                    {"from": previous, "to": role_count},
-                    owner_id=owner_id,
+                mine.record(
+                    RoleCountChanged(owner_id=owner_id, previous=previous, current=role_count)
                 )
         log.info("rolemap.role_count_set", owner_id=str(owner_id), role_count=role_count)
         return role_count
@@ -382,16 +380,13 @@ class RoleMapService:
         return embed(texts, model_name=self._embedding_model)
 
     async def _previous_members(self, owner_id: uuid.UUID) -> dict[str, set[str]]:
-        async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(RoleMember.role_id, RoleMember.posting_key).where(
-                    RoleMember.owner_id == owner_id
-                )
-            )
-            previous: dict[str, set[str]] = {}
-            for role_id, key in rows.all():
-                previous.setdefault(str(role_id), set()).add(key)
-            return previous
+        """Every role's postings from the last run. One user's map, read whole."""
+        async with self._uow.for_owner(owner_id) as mine:
+            members = await mine.members.get_list(RoleMemberFilter())
+        previous: dict[str, set[str]] = {}
+        for member in members:
+            previous.setdefault(str(member.role_id), set()).add(member.posting_key)
+        return previous
 
     async def _keep_role(
         self, owner_id: uuid.UUID, *, role_id: uuid.UUID, postings: list[PostingView]
@@ -400,13 +395,12 @@ class RoleMapService:
         no AI: its opening count and salary bands. ``False`` means there is no
         analysed role to keep, and the cluster is analysed afresh."""
         bands = await self._salary_bands(owner_id, postings)
-        async with self._db.for_user(owner_id) as session:
-            role = await session.get(Role, role_id)
+        async with self._uow.for_owner(owner_id) as mine:
+            role = await mine.roles.get(role_id)
             if role is None:
                 return False
-            role.opening_count = len(postings)
-            role.salary_bands = bands
-            role.retired_at = None
+            role.refresh_market(opening_count=len(postings), salary_bands=bands)
+            await mine.roles.update(role)
         return True
 
     async def _store_role(
@@ -417,49 +411,49 @@ class RoleMapService:
         keys: set[str],
         postings: list[PostingView],
         extraction: _RoleExtraction,
-        bar: Any,
+        bar: HiringBar,
         bar_reasoning: str,
         model_id: str,
         template_version: str,
     ) -> None:
         bands = await self._salary_bands(owner_id, postings)
 
-        async with self._db.for_user(owner_id) as session:
-            role = await session.get(Role, role_id)
-            if role is None:
-                role = Role(id=role_id, owner_id=owner_id, name=extraction.name)
-                session.add(role)
-            role.name = extraction.name
-            role.is_coherent = extraction.is_coherent
-            role.opening_count = len(postings)
-            role.hiring_bar = bar.value
-            role.bar_confidence = bar.confidence
-            role.bar_basis = str(bar.basis)
-            role.bar_sample_size = bar.sample_size
-            role.bar_reasoning = bar_reasoning
-            role.salary_bands = bands
-            role.model_id = model_id
-            role.template_version = template_version
-            role.retired_at = None
-            await session.flush()
+        async with self._uow.for_owner(owner_id) as mine:
+            role = await mine.roles.get(role_id)
+            is_new = role is None
+            role = role or Role(id=role_id, owner_id=owner_id, name=extraction.name)
+            role.analysed(
+                name=extraction.name,
+                is_coherent=extraction.is_coherent,
+                opening_count=len(postings),
+                bar=bar,
+                bar_reasoning=bar_reasoning,
+                salary_bands=bands,
+                model_id=model_id,
+                template_version=template_version,
+            )
+            if is_new:
+                await mine.roles.create(role)
+            else:
+                await mine.roles.update(role)
 
-            existing_members = await session.execute(
-                select(RoleMember).where(RoleMember.role_id == role_id)
-            )
-            for member in existing_members.scalars():
-                await session.delete(member)
-            existing_requirements = await session.execute(
-                select(RoleRequirement).where(RoleRequirement.role_id == role_id)
-            )
-            for requirement in existing_requirements.scalars():
-                await session.delete(requirement)
-            await session.flush()
+            # A role's members and requirements are replaced wholesale by a
+            # fresh analysis; a role holds a few dozen of each.
+            for member in await mine.members.get_list(RoleMemberFilter(role_ids=(role_id,))):
+                await mine.members.delete(member.id)
+            for requirement in await mine.requirements.get_list(
+                RoleRequirementFilter(role_ids=(role_id,))
+            ):
+                await mine.requirements.delete(requirement.id)
 
             for key in sorted(keys):
-                session.add(RoleMember(owner_id=owner_id, role_id=role_id, posting_key=key))
+                await mine.members.create(
+                    RoleMember(id=uuid.uuid4(), owner_id=owner_id, role_id=role_id, posting_key=key)
+                )
             for extracted in extraction.requirements:
-                session.add(
+                await mine.requirements.create(
                     RoleRequirement(
+                        id=uuid.uuid4(),
                         owner_id=owner_id,
                         role_id=role_id,
                         statement=extracted.statement,
@@ -468,11 +462,12 @@ class RoleMapService:
                     )
                 )
 
-            await emit(
-                session,
-                EventName.ROLE_REQUIREMENTS_CHANGED,
-                {"role_id": str(role_id), "requirements": len(extraction.requirements)},
-                owner_id=owner_id,
+            mine.record(
+                RoleRequirementsChanged(
+                    owner_id=owner_id,
+                    role_id=role_id,
+                    requirements=len(extraction.requirements),
+                )
             )
 
     async def _salary_bands(
@@ -501,47 +496,30 @@ class RoleMapService:
                 }
         return bands
 
-    async def _record_lineage(self, owner_id: uuid.UUID, reconciliation: Any) -> None:
-        async with self._db.for_user(owner_id) as session:
+    async def _record_lineage(self, owner_id: uuid.UUID, reconciliation: Reconciliation) -> None:
+        async with self._uow.for_owner(owner_id) as mine:
             for entry in reconciliation.lineage:
-                session.add(
-                    RoleLineage(
+                await mine.lineage.create(
+                    LineageEntry(
+                        id=uuid.uuid4(),
                         owner_id=owner_id,
                         role_id=uuid.UUID(entry.role_id),
-                        kind=str(entry.kind),
-                        from_role_ids=list(entry.from_role_ids),
+                        kind=entry.kind,
+                        from_role_ids=tuple(entry.from_role_ids),
                     )
                 )
             for retired in reconciliation.retired_role_ids:
-                role = await session.get(Role, uuid.UUID(retired))
+                role = await mine.roles.get(uuid.UUID(retired))
                 if role is not None:
-                    role.retired_at = utcnow()
+                    role.retire(utcnow())
+                    await mine.roles.update(role)
 
-            split_or_merged = [
+            split_or_merged = tuple(
                 e for e in reconciliation.lineage if e.kind in (RoleChange.SPLIT, RoleChange.MERGED)
-            ]
-            if split_or_merged:
-                await emit(
-                    session,
-                    EventName.ROLE_SPLIT_OR_MERGED,
-                    {
-                        "changes": [
-                            {
-                                "kind": str(e.kind),
-                                "role_id": e.role_id,
-                                "from": list(e.from_role_ids),
-                            }
-                            for e in split_or_merged
-                        ]
-                    },
-                    owner_id=owner_id,
-                )
-            await emit(
-                session,
-                EventName.ROLES_RECLUSTERED,
-                {"roles": len(reconciliation.assignments)},
-                owner_id=owner_id,
             )
+            if split_or_merged:
+                mine.record(RoleSplitOrMerged(owner_id=owner_id, changes=split_or_merged))
+            mine.record(RolesReclustered(owner_id=owner_id, roles=len(reconciliation.assignments)))
 
 
 def _posting_key(posting: PostingView) -> str:
@@ -571,7 +549,11 @@ def _postings_block(postings: list[PostingView]) -> str:
     return "\n\n".join(chunks)
 
 
-def _role_view(role: Role, requirements: tuple[RequirementView, ...]) -> RoleView:
+def _first[T](items: list[T]) -> T | None:
+    return items[0] if items else None
+
+
+def _role_view(role: Role, requirements: list[RoleRequirement]) -> RoleView:
     return RoleView(
         id=role.id,
         name=role.name,
@@ -580,8 +562,11 @@ def _role_view(role: Role, requirements: tuple[RequirementView, ...]) -> RoleVie
         bar_confidence=role.bar_confidence,
         bar_reasoning=role.bar_reasoning,
         opening_count=role.opening_count,
-        salary_bands=dict(role.salary_bands or {}),
-        requirements=requirements,
+        salary_bands=dict(role.salary_bands),
+        requirements=tuple(
+            RequirementView(r.statement, r.weight, r.expected_level)
+            for r in sorted(requirements, key=lambda r: (-r.weight, r.statement))
+        ),
         is_coherent=role.is_coherent,
     )
 

@@ -170,8 +170,8 @@ repository has the same six methods (`create`, `get`, `get_list`, `get_count`,
 paged. The six are written once in `kernel.db.repository.SqlAlchemyRepository`,
 with an in-memory twin for unit tests in `tests/unit/kernel/db/fake_repository.py`.
 A component's `factory.py` builds its services from a `Database`; nothing else
-constructs a repository. `market`, `profile` and `identity` have moved; the
-other components move one at a time.
+constructs a repository. `market`, `profile`, `identity` and `rolemap` have
+moved; `assessment`, `gapplan` and `resume` still query from `service.py`.
 
 Nineteen `import-linter` contracts in `backend/.importlinter` enforce those
 boundaries, and they run in CI. If one breaks, the design is wrong, not the
