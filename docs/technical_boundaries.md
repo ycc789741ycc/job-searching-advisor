@@ -63,40 +63,45 @@ The worker queues share one image for the MVP. Split them later by giving each q
 ## 2. Code boundaries inside the monolith
 
 ```
-backend/
-  app/                      # composition root: FastAPI app, worker + crawler entrypoints, wiring
+backend/src/
+  api/                      # FastAPI: main.py, dependencies, error envelope, routes/<component>.py
+  worker/                   # queue worker entrypoint + the outbox dispatcher
+  crawler/                  # separate deployable: the crawl loop only
+  cli/                      # migrate, job-queue schema, baseline seed, OpenAPI export
+  wiring/                   # composition root: container.py, crawl.py (the crawler's), queue.py, models.py
   kernel/                   # shared technical kernel, no domain logic
     db/ outbox/ jobs/ auth/ crypto/ storage/ ai_gateway/ fetch/ embeddings/
-  domain/                   # the domain model: entities and rules; pure Python, no I/O
+  advisor/                  # the application: one package per component, no framework code
     identity/  profile/  market/  rolemap/  assessment/  target/  gapplan/  resume/
-  modules/
-    identity/  profile/  market/  rolemap/  assessment/  target/  gapplan/  resume/
-      public.py             # the ONLY importable surface: service interface, DTOs, event types
-      api.py                # FastAPI routers
-      infra/                # repositories, external adapters
-      jobs.py               # queued task handlers
-  crawler/                  # separate deployable; uses kernel.db/fetch/embeddings + modules.market.public
+      __init__.py           # the ONLY importable surface: service interface, DTOs, job functions
+      _service.py           # use cases
+      _domain/              # entities and rules; pure Python, no I/O
+      _infra/               # ORM models, repositories, external adapters
+      _jobs.py              # use cases the worker runs
+    market/_crawling/       # board adapters, discovery, politeness, one crawl run
 web/                        # TS client
 ```
 
-> The shared package is named `kernel`, not `platform`, because `platform` would shadow Python's standard-library module.
+> The backend is packaged by component ([ADR 0009](decisions/0009-package-the-backend-by-component.md), after the design guideline's ADR 0003). A component owns its domain model, use cases and data access, and everything `_`-prefixed in it is private. Before 2026-09-27 the domain model sat in a top-level `domain/` folder beside `modules/<m>/{public,api,jobs,infra}`, so older ADRs cite paths like `modules/rolemap/public.py` and `domain/rolemap/selection.py`. Those are now `advisor/rolemap/_service.py` and `advisor/rolemap/_domain/selection.py`.
 >
-> The domain model is one top-level `domain/` folder with a package per feature, not a `domain/` inside each module. That is the design guideline's rule (its ADR 0002): the layer boundary is visible, and can be checked, against one path. The cost it names applies here too: one feature now spans `domain/<m>/` and `modules/<m>/`. Before 2026-09-22 each module had its own `domain/`, so ADRs 0002 and 0003 still cite `modules/rolemap/domain/selection.py`, which is now `domain/rolemap/selection.py`.
+> `kernel/` stays outside the application on purpose: it is infrastructure, and the rules below name its packages. It is named `kernel`, not `platform`, because `platform` would shadow Python's standard-library module.
 >
-> `gapplan` replaces the earlier `growth`: with no CareerGoal (domain decision 16), the module is about plans for a Target and nothing else. The Target itself has its own feature package and module, `target`, because both `gapplan` and `resume` aim at one and rules 7 and 8 forbid either from owning it ([ADR 0005](decisions/0005-resolve-targets-in-their-own-module.md)). `target` has no tables: it resolves a Target through other modules' `public.py` and hands back a frozen snapshot that the plan or résumé stores. `resume` serves its routes under `/tailored-resumes`, because `/resumes` is the profile's, for uploaded files.
+> `gapplan` replaces the earlier `growth`: with no CareerGoal (domain decision 16), the component is about plans for a Target and nothing else. The Target itself has its own component, `target`, because both `gapplan` and `resume` aim at one and neither may own it ([ADR 0005](decisions/0005-resolve-targets-in-their-own-module.md)). `target` has no tables: it resolves a Target through other components' public APIs and hands back a frozen snapshot that the plan or résumé stores. `resume` serves its routes under `/tailored-resumes`, because `/resumes` is the profile's, for uploaded files.
 
-### Rules (enforced in CI with `import-linter` contracts)
-1. A module imports another module **only** through its `public.py`.
-2. `domain/` imports no application code (`app`, `modules`, `crawler`), nothing from `kernel/`, and no framework, ORM or HTTP library.
-3. `crawler/` may import only `kernel.db`, `kernel.fetch`, `kernel.embeddings`, `kernel.outbox` and `modules.market.public`.
-4. Only `kernel.ai_gateway` and `modules.profile.infra.connectors` may import `kernel.crypto`'s decrypt functions.
-5. `modules.*` never call an LLM SDK directly; they go through `kernel.ai_gateway`.
-6. `modules.profile` never imports `kernel.ai_gateway`, directly or indirectly. Ingestion is deterministic (domain decision 18), so a sync can never spend the user's key and the most hostile input never reaches a prompt from there.
-7. Domain feature packages (`domain.identity`, `domain.market`, …) are independent: none imports another. A concept two features need gets its own feature package.
-8. `modules.<m>` imports only `domain.<m>`. Another module's rules are reached through that module's `public.py` (rule 1).
+### Rules (enforced in CI with `import-linter` contracts, `backend/.importlinter`)
+1. A component is imported **only** through its `__init__.py`. Nothing outside it imports its `_`-prefixed modules.
+2. A component's `_domain/` imports no kernel, deployable, framework, ORM or HTTP library, and nothing else from its own component.
+3. Component domain models are independent: none imports another. A concept two components need gets its own component.
+4. `advisor` imports no deployable (`api`, `worker`, `crawler`, `cli`), no composition root (`wiring`) and no web or queue framework.
+5. Components depend on each other one way only: `gapplan | resume` → `target` → `assessment` → `rolemap` → `identity | profile | market`.
+6. `crawler/` may import only `advisor.market`, `wiring.crawl` and the kernel pieces it needs. It never reaches `kernel.crypto`, `kernel.ai_gateway`, `kernel.auth` or `kernel.storage`, even indirectly.
+7. Only `kernel.ai_gateway`, `advisor.identity` (to encrypt the credential it stores) and `advisor.profile`'s connectors may import `kernel.crypto`.
+8. Components never call an LLM SDK directly; they go through `kernel.ai_gateway`.
+9. `kernel/` imports no component, deployable or composition root.
+10. `advisor.profile` never imports `kernel.ai_gateway`, directly or indirectly. Ingestion is deterministic (domain decision 18), so a sync can never spend the user's key and the most hostile input never reaches a prompt from there.
 
 ### Communication
-- **Queries** are synchronous in-process calls through `public.py`. For example, `resume` asks `assessment` for the current RoleFit.
+- **Queries** are synchronous in-process calls through a component's `__init__.py`. For example, `resume` asks `assessment` for the current RoleFit.
 - **Side effects** go through **domain events** with a **transactional outbox**. The event row is written in the same transaction as the change, and a dispatcher in `worker` turns events into queued jobs:
 
 | Event | Emitted by | Handled by |
@@ -147,7 +152,7 @@ web/                        # TS client
 | Domain data | Stored in | Why |
 |---|---|---|
 | RoleSubscription, MarketPreference | `market_user.company_subscription`, `market_user.market_preference` | User-owned. The subscription table keeps its name and gains `role_title`, a nullable `role_id` and a nullable `url` (domain decision 19); renaming it would mean rewriting the fan-out RLS policy for no gain. The worker copies the needed companies, URLs and markets into `market.crawl_source` **without user ids**, so the crawler can't tell who asked for them. |
-| Baseline sources (domain decision 15) | `market.crawl_source` with `origin = 'baseline'` | A versioned seed owned by `modules.market`, loaded by `make migrate`. It is data reviewed like code, not environment configuration. Demand rows have `origin = 'demand'`. Neither carries a user id. |
+| Baseline sources (domain decision 15) | `market.crawl_source` with `origin = 'baseline'` | A versioned seed owned by `advisor.market`, loaded by `make migrate`. It is data reviewed like code, not environment configuration. Demand rows have `origin = 'demand'`. Neither carries a user id. |
 | Role count k (domain decision 17) | `rolemap.role_map_setting` | Owner zone, one row per user; the bound is enforced in the `rolemap` domain rule and the API schema (ADR 0003). |
 | Resume, ResumeVersion, RevisionThread, exports | `resume.resume`, `resume.version`, `resume.revision`, `resume.export` | Owner zone. A résumé holds its Target like a plan does, with its snapshot and RequirementCoverage. Versions are never overwritten (`generated`, `manual`, `chat`); each chat exchange keeps the proposal it made and the version it became; exported PDFs live in object storage under `users/{owner}/exports/`. |
 | GapPlan, Milestone, Task | `gapplan.plan`, `gapplan.milestone`, `gapplan.task` | Owner zone. A plan row holds the Target as `target_kind` plus one of `job_posting_id`, `subscription_id` or `private_posting_id`, and the frozen requirements snapshot, so a plan survives posting expiry and re-clustering. Regenerating adds a row with the next `version`; finished tasks carry over by matching. Each row has a `status` (`drafting`, `ready`, `failed`) and the failure's code ([ADR 0006](decisions/0006-report-ai-job-progress-through-a-status-the-page-polls.md)). |
@@ -170,7 +175,7 @@ web/                        # TS client
 | Connector OAuth tokens (GitHub, Jira, LinkedIn) | `profile.source_connection`, envelope-encrypted | `profile.infra.connectors` in `worker` (`sync` queue) | `web`, `api` handlers, `crawler`, logs |
 | Master encryption key | PaaS secret on `api` and `worker` only | `kernel.crypto` | `crawler` |
 | Session signing secret (`AUTH_JWT_SECRET`) | api environment | `kernel.auth`, and the Google sign-in attempt cookie's HMAC | Everything else |
-| Google OAuth client secret | api environment | `modules.identity.infra.google`, for the code exchange only | `worker`, `crawler`, `web`, logs |
+| Google OAuth client secret | api environment | `advisor.identity`'s Google adapter, for the code exchange only | `worker`, `crawler`, `web`, logs |
 | Google's ID-token signing keys | Google (api fetches the public JWKS) | n/a | Everything else |
 
 - **Envelope encryption:** each record has its own data key (AES-GCM), wrapped by the master key. Moving to a cloud KMS (AWS/GCP) later only replaces the master-key wrapper; the schema doesn't change.
@@ -242,7 +247,7 @@ flowchart LR
 | # | Decision |
 |---|---|
 | T1 | Modular monolith (`api` + `worker`) plus a separate `crawler`; Python backend, TypeScript SPA; managed PaaS; small-team MVP |
-| T2 | Modules interact only through `public.py`, enforced by `import-linter`; side effects via transactional outbox and events |
+| T2 | Components interact only through their `__init__.py`, enforced by `import-linter`; side effects via transactional outbox and events |
 | T3 | One Postgres with a schema per module; separate least-privilege DB roles for crawler and aggregator; RLS on every owner-zone table |
 | T4 | Privacy by storage location: subscriptions and pasted JDs in `market_user`; interview reports split into a private outcome and an anonymized contribution, aggregated at ≥ 3 contributors |
 | T5 | Envelope encryption for the LLM key and connector tokens; master key only on `api` and `worker`; path to cloud KMS later |
