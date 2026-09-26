@@ -65,7 +65,8 @@ endif
 
 .PHONY: help require-env check-mode require-mode-images build-infra build-app \
         start-infra start-app stop-app stop-infra test-unit test-integration \
-        migrate lint typecheck scan format gen-client lock clean-up-infra logs
+        migrate lint typecheck scan format gen-client lock clean-up-infra logs \
+        stats disk-usage
 
 help:
 	@echo "Standard targets (build-app, start-app, stop-app take MODE=dev|prod):"
@@ -74,7 +75,7 @@ help:
 	@echo "Gates (their own targets, never folded into a test target):"
 	@echo "  lint typecheck scan"
 	@echo "Supporting targets (never dependencies of the above):"
-	@echo "  migrate format gen-client lock logs clean-up-infra"
+	@echo "  migrate format gen-client lock logs stats disk-usage clean-up-infra"
 
 require-env:
 	@test -f $(ENV_FILE) || { \
@@ -133,6 +134,26 @@ stop-infra: require-env
 
 logs: require-env
 	$(COMPOSE_BASE) logs --tail 100 -f
+
+# --- resource usage ---------------------------------------------------------
+
+# One snapshot of CPU, memory and processes for this stack's containers, both
+# projects, against the limits the compose files set (MEM % is of the limit).
+# Then restarts and OOM kills: a non-zero count means a limit is too tight or
+# something leaks — raise the *_MEM_LIMIT in .env, or find the leak.
+stats: require-env
+	@ids="$$($(COMPOSE_INFRA) ps -q) $$($(COMPOSE_BASE) ps -q)"; \
+	 [ -n "$${ids// /}" ] || { echo "Nothing is running. Run: make start-infra"; exit 1; }; \
+	 docker stats --no-stream \
+	   --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.PIDs}}' $$ids; \
+	 echo; \
+	 docker inspect --format '{{.Name}}  restarts={{.RestartCount}}  oom_killed={{.State.OOMKilled}}' \
+	   $$ids | sed 's|^/||'
+
+# Where the disk goes: free space, volume sizes, the largest Postgres
+# relations, and object storage by bucket. Read-only. Needs infra up.
+disk-usage: require-env
+	@infra/disk-usage.sh
 
 # --- migrations -------------------------------------------------------------
 

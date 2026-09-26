@@ -22,7 +22,17 @@ networks:
     name: jsa_net
     external: true
 
+# Docker's default json-file driver keeps every line a container writes,
+# forever, which is how a quiet host eventually runs out of disk. Rotate it.
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: ${DOCKER_LOG_MAX_SIZE:-10m}
+      max-file: "${DOCKER_LOG_MAX_FILE:-3}"
+
 x-hardened: &hardened
+  <<: *logging
   security_opt:
     - no-new-privileges:true
   # These images are built locally by `make build-app`, never pulled. Without
@@ -39,15 +49,31 @@ x-backend: &backend
   # These processes only ever write to the caches declared below.
   read_only: true
   tmpfs:
-    - /tmp
+    # Nothing here writes to /tmp itself; the cap is for libraries that do.
+    - /tmp:size=128m
 
 x-long-running: &long-running
   restart: unless-stopped
+
+# Resource limits. Each service gets a memory ceiling, a CPU share and a
+# process cap, so one runaway — a crawl that parses something huge, a PDF
+# render that balloons — is OOM-killed and restarted on its own instead of
+# starving Postgres and everything else on the host. memswap_limit equals
+# mem_limit so an overrun is killed promptly and visibly, rather than swapping
+# the host to a crawl. `make stats` shows usage against these ceilings, and any
+# restarts or OOM kills.
+#
+# The defaults are about twice what each service was measured using, so they
+# are optional settings: override them per environment in .env, never here.
 
 services:
   # Verifies tokens, serves HTTP, starts connector OAuth. Holds the master key.
   api:
     <<: [*backend, *long-running]
+    mem_limit: ${API_MEM_LIMIT:-768m}
+    memswap_limit: ${API_MEM_LIMIT:-768m}
+    cpus: ${API_CPUS:-1.0}
+    pids_limit: 256
     env_file: .env
     command:
       - uvicorn
@@ -62,6 +88,10 @@ services:
   # Runs AI jobs and connector syncs. Holds the master key and connector tokens.
   worker:
     <<: [*backend, *long-running]
+    mem_limit: ${WORKER_MEM_LIMIT:-2g}
+    memswap_limit: ${WORKER_MEM_LIMIT:-2g}
+    cpus: ${WORKER_CPUS:-2.0}
+    pids_limit: 512
     env_file: .env
     command: ["python", "-m", "app.worker_main"]
     volumes:
@@ -75,6 +105,10 @@ services:
   # genuinely all it needs.
   crawler:
     <<: [*backend, *long-running]
+    mem_limit: ${CRAWLER_MEM_LIMIT:-2g}
+    memswap_limit: ${CRAWLER_MEM_LIMIT:-2g}
+    cpus: ${CRAWLER_CPUS:-1.0}
+    pids_limit: 256
     command: ["python", "-m", "app.crawler_main"]
     environment:
       APP_ENV: ${APP_ENV:?APP_ENV is required}
@@ -96,6 +130,10 @@ services:
   # so `up` never starts it.
   migrate:
     <<: *backend
+    mem_limit: ${MIGRATE_MEM_LIMIT:-768m}
+    memswap_limit: ${MIGRATE_MEM_LIMIT:-768m}
+    cpus: ${MIGRATE_CPUS:-1.0}
+    pids_limit: 256
     profiles: ["migrate"]
     env_file: .env
     command: ["python", "-m", "app.migrate_main"]
@@ -104,6 +142,10 @@ services:
   # reaches the browser, so it receives nothing else.
   web:
     <<: [*hardened, *long-running]
+    mem_limit: ${WEB_MEM_LIMIT:-512m}
+    memswap_limit: ${WEB_MEM_LIMIT:-512m}
+    cpus: ${WEB_CPUS:-0.5}
+    pids_limit: 256
     build:
       context: ./web
       target: prod

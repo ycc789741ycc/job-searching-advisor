@@ -14,8 +14,24 @@ networks:
   default:
     name: jsa_net
 
+# Rotated logs and resource limits, for the same reasons as in compose.yaml.
+# Set generously: an OOM kill here takes the datastore down, so these guard the
+# host against a leak, not the app against a slow query. Override per
+# environment in .env.
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: ${DOCKER_LOG_MAX_SIZE:-10m}
+      max-file: "${DOCKER_LOG_MAX_FILE:-3}"
+
 services:
   postgres:
+    <<: *logging
+    mem_limit: ${POSTGRES_MEM_LIMIT:-1g}
+    memswap_limit: ${POSTGRES_MEM_LIMIT:-1g}
+    cpus: ${POSTGRES_CPUS:-2.0}
+    pids_limit: 512
     image: pgvector/pgvector:0.8.6-pg16-bookworm
     environment:
       POSTGRES_USER: ${POSTGRES_SUPERUSER:?POSTGRES_SUPERUSER is required}
@@ -34,6 +50,11 @@ services:
       retries: 20
 
   objectstore:
+    <<: *logging
+    mem_limit: ${OBJECTSTORE_MEM_LIMIT:-1g}
+    memswap_limit: ${OBJECTSTORE_MEM_LIMIT:-1g}
+    cpus: ${OBJECTSTORE_CPUS:-1.0}
+    pids_limit: 256
     # quay.io, not Docker Hub: the docker.io/minio/minio repository is no longer
     # publicly pullable.
     image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z

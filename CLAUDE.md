@@ -94,8 +94,16 @@ host.
 
 Supporting targets, never dependencies of the above: `migrate`, `format`,
 `gen-client`, `lock` (regenerates `backend/uv.lock` after a dependency change),
-`logs`, and `clean-up-infra` (the only destructive one).
+`logs`, `stats`, `disk-usage`, and `clean-up-infra` (the only destructive one).
 
+- `stats` is one snapshot of CPU, memory and processes for every container,
+  measured against its limit, plus restart and OOM-kill counts. `disk-usage`
+  shows free disk, volume sizes, the largest Postgres relations and object
+  storage by bucket. Both only read, and `disk-usage` needs infra up.
+- Every container has a memory, CPU and process ceiling and rotated logs. The
+  defaults are optional `*_MEM_LIMIT` / `*_CPUS` / `DOCKER_LOG_*` settings in
+  `.env`. Raise a limit there, never in the compose files, when `stats` shows a
+  service near its ceiling or `oom_killed=true`.
 - `format` and `lock` write to source, so they run through `compose.dev.yaml`,
   where the mounts live. They need the dev images (`make build-app MODE=dev`),
   and they run as your own uid, so the files they rewrite stay yours.
