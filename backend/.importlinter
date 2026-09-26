@@ -403,3 +403,20 @@ source_modules =
     advisor.profile
 forbidden_modules =
     kernel.ai_gateway
+
+# Rule 12: use cases know no persistence (ADR 0010). They reach stored data only
+# through the repository interfaces their component's domain defines, in domain
+# types; infra implements them. Components join this list as they move over.
+[importlinter:contract:use-cases-know-no-persistence]
+name = Use cases import no ORM, no database package and no infra
+type = forbidden
+source_modules =
+    advisor.market.service
+    advisor.market.jobs
+forbidden_modules =
+    sqlalchemy
+    pgvector
+    kernel.db
+    kernel.outbox.models
+    kernel.outbox.writer
+    advisor.market.infra

@@ -7,7 +7,7 @@ this process holds no secrets by design.
 
 from __future__ import annotations
 
-from advisor.market import CrawlIngest
+from advisor.market import CrawlIngest, SqlMarketUnitOfWork
 from kernel.config import Settings, Unit, get_settings
 from kernel.db import Database
 
@@ -16,4 +16,4 @@ def build_crawl_ingest(settings: Settings | None = None) -> tuple[Database, Craw
     settings = settings or get_settings()
     settings.require_for(Unit.CRAWLER)
     database = Database(settings, url=settings.require_crawler_database_url())
-    return database, CrawlIngest(database)
+    return database, CrawlIngest(SqlMarketUnitOfWork(database))

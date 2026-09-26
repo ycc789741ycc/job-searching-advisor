@@ -1,4 +1,4 @@
-"""Worker handlers for the market module.
+"""Worker use cases for the market component.
 
 The one that matters is ``materialize_crawl_sources``: it copies the companies
 and markets users asked for into ``market.crawl_source`` **without user ids**,
@@ -10,11 +10,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select
-
-from advisor.market.domain import Coverage, SourceKind, SourceOrigin
-from advisor.market.infra.models import Company, CompanySubscription, CrawlSource
-from kernel.db.base import utcnow
+from advisor.market.domain import Coverage, SourceKind
 from kernel.fetch import GuardedClient
 from kernel.logging import get_logger
 
@@ -44,19 +40,9 @@ async def discover_board(
     await deps.market.set_coverage(uuid.UUID(owner_id), uuid.UUID(company_id), coverage)
 
     if found is not None:
-        async with deps.database.shared() as session:
-            existing = await session.execute(
-                select(CrawlSource).where(CrawlSource.endpoint == found.endpoint)
-            )
-            if existing.scalar_one_or_none() is None:
-                session.add(
-                    CrawlSource(
-                        kind=found.adapter_name,
-                        company_id=uuid.UUID(company_id),
-                        endpoint=found.endpoint,
-                        origin=SourceOrigin.DEMAND,
-                    )
-                )
+        await deps.market.register_board(
+            uuid.UUID(company_id), kind=found.adapter_name, endpoint=found.endpoint
+        )
     log.info("market.board_discovered", company=company_name, coverage=str(coverage))
 
 
@@ -81,17 +67,7 @@ async def refresh_company(deps: Any, *, owner_id: str, company_id: str) -> None:
     finally:
         await crawler_db.dispose()
 
-    async with deps.database.for_user(uuid.UUID(owner_id)) as session:
-        # Every role the user watches at this company shares its board.
-        rows = await session.execute(
-            select(CompanySubscription).where(
-                CompanySubscription.owner_id == uuid.UUID(owner_id),
-                CompanySubscription.company_id == uuid.UUID(company_id),
-            )
-        )
-        refreshed_at = utcnow()
-        for subscription in rows.scalars():
-            subscription.last_refreshed_at = refreshed_at
+    await deps.market.mark_refreshed(uuid.UUID(owner_id), uuid.UUID(company_id))
 
 
 async def materialize_crawl_sources(deps: Any) -> None:
@@ -101,35 +77,16 @@ async def materialize_crawl_sources(deps: Any) -> None:
     user data and must not be able to infer any.
 
     Reading every user's subscriptions is a cross-user read, so it goes through
-    the fan-out transaction and its SELECT-only policy. A ``shared()`` session
-    has no ``app.user_id`` and sees no owner-zone rows at all.
+    the fan-out scope and its SELECT-only policy. The shared scope has no
+    ``app.user_id`` and sees no owner-zone rows at all.
     """
-    async with deps.database.fanout() as session:
-        wanted = await session.execute(
-            select(
-                CompanySubscription.company_id,
-                CompanySubscription.company_name,
-                CompanySubscription.url,
-            ).distinct()
-        )
-        # One entry per company, with the first link anyone gave for it. Only
-        # the link crosses over — never who gave it.
-        by_company: dict[Any, tuple[str, str | None]] = {}
-        for company_id, company_name, url in wanted.all():
-            name, known_url = by_company.get(company_id, (company_name, None))
-            by_company[company_id] = (name, known_url or url)
-        rows = [(cid, name, url) for cid, (name, url) in by_company.items()]
+    rows = await deps.market.watched_boards()
 
     added = 0
     for company_id, company_name, url in rows:
-        async with deps.database.shared() as session:
-            existing = await session.execute(
-                select(CrawlSource).where(CrawlSource.company_id == company_id)
-            )
-            if existing.scalar_one_or_none() is not None:
-                continue
-            company = await session.get(Company, company_id)
-            name = company.name if company is not None else company_name
+        name = await deps.market.company_needing_source(company_id, company_name)
+        if name is None:
+            continue
 
         settings = deps.settings
         from advisor.market.crawling.discovery import discover_board as probe
@@ -141,16 +98,10 @@ async def materialize_crawl_sources(deps: Any) -> None:
             found = await probe(client, name, url=url, user_agent=settings.crawl_user_agent)
         if found is None:
             continue
-        async with deps.database.shared() as session:
-            session.add(
-                CrawlSource(
-                    kind=found.adapter_name,
-                    company_id=company_id,
-                    endpoint=found.endpoint,
-                    origin=SourceOrigin.DEMAND,
-                )
-            )
-            added += 1
+        await deps.market.add_demand_source(
+            company_id, kind=found.adapter_name, endpoint=found.endpoint
+        )
+        added += 1
 
     log.info("market.crawl_sources_materialized", added=added, considered=len(rows))
 

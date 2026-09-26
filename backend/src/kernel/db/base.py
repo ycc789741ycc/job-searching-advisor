@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import DateTime, MetaData, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+# Kept importable from here for existing callers; new code takes it from kernel.clock.
+from kernel.clock import utcnow as utcnow
 
 # snake_case names, and one predictable constraint-naming scheme so Alembic can
 # autogenerate reversible migrations.
@@ -25,10 +28,6 @@ class Base(DeclarativeBase):
 
 def new_id() -> uuid.UUID:
     return uuid.uuid4()
-
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 class TimestampMixin:

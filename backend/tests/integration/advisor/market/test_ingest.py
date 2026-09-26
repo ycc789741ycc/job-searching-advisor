@@ -18,6 +18,7 @@ from advisor.market import (
     MarketService,
     NormalizedPosting,
     SourceKind,
+    SqlMarketUnitOfWork,
     Visibility,
 )
 from advisor.market.infra.models import CrawlSource
@@ -69,7 +70,7 @@ async def source(crawler_database: Database):
 
 
 async def test_a_crawl_stores_normalised_postings(crawler_database: Database, source) -> None:
-    ingest = CrawlIngest(crawler_database)
+    ingest = CrawlIngest(SqlMarketUnitOfWork(crawler_database))
     upserted, expired = await ingest.record_crawl(
         source, [posting("Senior Backend Engineer"), posting("Platform Engineer")]
     )
@@ -87,7 +88,7 @@ async def test_the_same_job_seen_twice_does_not_duplicate(
     database: Database, crawler_database: Database, source
 ) -> None:
     """The dedup key is what keeps one opening from becoming two."""
-    ingest = CrawlIngest(crawler_database)
+    ingest = CrawlIngest(SqlMarketUnitOfWork(crawler_database))
     await ingest.record_crawl(source, [posting("Senior Backend Engineer (m/f/d)")])
     await ingest.record_crawl(source, [posting("Senior Backend Engineer")])
 
@@ -103,7 +104,7 @@ async def test_a_posting_missing_from_a_crawl_is_expired_not_deleted(
     database: Database, crawler_database: Database, source
 ) -> None:
     """Expired postings still count toward salary history."""
-    ingest = CrawlIngest(crawler_database)
+    ingest = CrawlIngest(SqlMarketUnitOfWork(crawler_database))
     await ingest.record_crawl(source, [posting("Senior Backend Engineer"), posting("Gone Role")])
     await ingest.record_crawl(source, [posting("Senior Backend Engineer")])
 
@@ -125,7 +126,7 @@ async def test_a_crawl_emits_a_market_event_with_no_user_in_it(
     database: Database, crawler_database: Database, source
 ) -> None:
     """The crawler must not be able to say who its work was for."""
-    ingest = CrawlIngest(crawler_database)
+    ingest = CrawlIngest(SqlMarketUnitOfWork(crawler_database))
     await ingest.record_crawl(source, [posting("Senior Backend Engineer")])
 
     async with database.shared() as session:
@@ -143,7 +144,7 @@ async def test_a_crawl_emits_a_market_event_with_no_user_in_it(
 async def test_a_pasted_jd_never_reaches_the_shared_tables(
     database: Database, account: uuid.UUID
 ) -> None:
-    market = MarketService(database, manual_refresh_per_day=3)
+    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
     pasted = await market.paste_job_description(
         account,
         company_name="Uncrawlable Ltd",
@@ -163,7 +164,7 @@ async def test_a_pasted_jd_never_reaches_the_shared_tables(
 async def test_another_users_pasted_jd_is_not_in_my_scope(
     database: Database, account: uuid.UUID, other_account: uuid.UUID
 ) -> None:
-    market = MarketService(database, manual_refresh_per_day=3)
+    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
     await market.paste_job_description(
         other_account,
         company_name="Theirs",
@@ -179,7 +180,7 @@ async def test_the_manual_refresh_cap_is_enforced(database: Database, account: u
     """The weekly schedule stays the norm."""
     from kernel.errors import RateLimitedError
 
-    market = MarketService(database, manual_refresh_per_day=2)
+    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=2)
     company = uuid.uuid4()
     await market.request_manual_refresh(account, company)
     await market.request_manual_refresh(account, company)
@@ -195,7 +196,7 @@ async def test_a_user_can_watch_several_roles_at_one_company(
 ) -> None:
     from advisor.market import Coverage
 
-    market = MarketService(database, manual_refresh_per_day=3)
+    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
     company = f"Kestrel {uuid.uuid4().hex[:8]}"
 
     backend = await market.subscribe(
@@ -232,7 +233,7 @@ async def test_unsubscribing_removes_only_that_role(
 ) -> None:
     from kernel.errors import NotFoundError
 
-    market = MarketService(database, manual_refresh_per_day=3)
+    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
     company = f"Fieldnote {uuid.uuid4().hex[:8]}"
     keep = await market.subscribe(account, company_name=company, role_title="Full-Stack")
     drop = await market.subscribe(account, company_name=company, role_title="Frontend")
@@ -253,7 +254,7 @@ async def test_a_subscription_needs_a_role_and_a_web_link(
 ) -> None:
     from kernel.errors import ValidationError
 
-    market = MarketService(database, manual_refresh_per_day=3)
+    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
     with pytest.raises(ValidationError, match="role"):
         await market.subscribe(account, company_name="Acme", role_title="  ")
     with pytest.raises(ValidationError, match="http"):
@@ -270,7 +271,7 @@ async def test_a_company_change_reaches_each_watching_user_once(
 
     from worker.dispatcher import _users_affected_by
 
-    market = MarketService(database, manual_refresh_per_day=3)
+    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
     company = f"Meridian {uuid.uuid4().hex[:8]}"
     first = await market.subscribe(account, company_name=company, role_title="Staff Platform")
     await market.subscribe(account, company_name=company, role_title="Senior Backend")
@@ -296,7 +297,7 @@ async def test_a_link_reaches_board_discovery_without_its_owner(
     from advisor.market import jobs
     from advisor.market.crawling.discovery import DiscoveredBoard
 
-    market = MarketService(database, manual_refresh_per_day=3)
+    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
     company = f"Northwind {uuid.uuid4().hex[:8]}"
     subscription = await market.subscribe(
         account,
@@ -314,7 +315,7 @@ async def test_a_link_reaches_board_discovery_without_its_owner(
 
     monkeypatch.setattr(advisor.market.crawling.discovery, "discover_board", fake_probe)
     await jobs.discover_board(
-        SimpleNamespace(settings=settings, market=market, database=database),
+        SimpleNamespace(settings=settings, market=market),
         owner_id=str(account),
         company_id=str(subscription.company_id),
         company_name=company,
@@ -351,7 +352,7 @@ async def test_the_weekly_recheck_sees_every_users_subscriptions(
     from advisor.market import jobs
     from advisor.market.crawling.discovery import DiscoveredBoard
 
-    market = MarketService(database, manual_refresh_per_day=3)
+    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
     company = f"Ostrom {uuid.uuid4().hex[:8]}"
     await market.subscribe(
         account,
@@ -369,7 +370,7 @@ async def test_the_weekly_recheck_sees_every_users_subscriptions(
         return DiscoveredBoard(adapter_name="ashby", endpoint=endpoint, posting_count=1)
 
     monkeypatch.setattr(advisor.market.crawling.discovery, "discover_board", fake_probe)
-    await jobs.materialize_crawl_sources(SimpleNamespace(settings=settings, database=database))
+    await jobs.materialize_crawl_sources(SimpleNamespace(settings=settings, market=market))
 
     assert (company, "https://jobs.ashbyhq.com/ostrom-test") in probed
     async with database.shared() as session:
@@ -397,7 +398,7 @@ async def test_seeding_the_baseline_is_idempotent_and_retires_what_was_dropped(
         f"Baseline Test {uuid.uuid4().hex[:8]}",
         f"https://boards-api.greenhouse.io/v1/boards/{uuid.uuid4().hex}/jobs?content=true",
     )
-    market = MarketService(database, manual_refresh_per_day=3)
+    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
 
     async def rows_for(endpoint: str) -> list[tuple[str, str]]:
         async with database.shared() as session:
@@ -443,10 +444,10 @@ async def test_a_user_with_no_market_sees_baseline_postings_and_one_with_a_marke
         await session.flush()
         source_id = row.id
     try:
-        await CrawlIngest(crawler_database).record_crawl(
+        await CrawlIngest(SqlMarketUnitOfWork(crawler_database)).record_crawl(
             source_id, [posting("Baseline Engineer", company=company, location="Lisbon")]
         )
-        market = MarketService(database, manual_refresh_per_day=3)
+        market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
         await market.add_market(other_account, f"Elsewhere {uuid.uuid4().hex[:8]}")
 
         mine = await market.postings_in_scope(account)
@@ -478,7 +479,7 @@ async def test_materialising_leaves_a_baseline_source_alone(
     from advisor.market import BASELINE_SOURCES, jobs
 
     baseline = BASELINE_SOURCES[0]
-    market = MarketService(database, manual_refresh_per_day=3)
+    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
     await market.seed_baseline()
     await market.subscribe(account, company_name=baseline.company_name, role_title="Engineer")
 
@@ -489,7 +490,7 @@ async def test_materialising_leaves_a_baseline_source_alone(
         return None
 
     monkeypatch.setattr(advisor.market.crawling.discovery, "discover_board", record_probe)
-    await jobs.materialize_crawl_sources(SimpleNamespace(settings=settings, database=database))
+    await jobs.materialize_crawl_sources(SimpleNamespace(settings=settings, market=market))
 
     assert baseline.company_name not in probed
     async with database.shared() as session:

@@ -15,6 +15,7 @@ new record that supersedes the old one.
 | [0007](0007-render-resume-pdfs-with-weasyprint.md) | Render résumé PDFs with WeasyPrint, not a headless browser | Accepted |
 | [0008](0008-sign-in-with-google-by-our-own-oidc-exchange.md) | Sign in with Google through our own OpenID Connect exchange, and let a verified address take over an unverified one | Accepted |
 | [0009](0009-package-the-backend-by-component.md) | Package the backend by component, keeping `kernel/` outside the application | Accepted |
+| [0010](0010-define-repositories-in-the-domain-in-domain-types.md) | Define repositories in the domain, in domain types | Accepted |
 
 Decisions taken before this directory existed are recorded in the tables of
 `docs/domain_model_review.md` section 6 and `docs/technical_boundaries.md`

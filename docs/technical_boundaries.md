@@ -74,9 +74,9 @@ backend/src/
   advisor/                  # the application: one package per component, no framework code
     identity/  profile/  market/  rolemap/  assessment/  target/  gapplan/  resume/
       __init__.py           # the ONLY importable surface: service interface, DTOs, job functions
-      service.py           # use cases
-      domain/              # entities and rules; pure Python, no I/O
-      infra/               # ORM models, repositories, external adapters
+      service.py           # use cases: data only through domain/repositories.py (ADR 0010)
+      domain/              # entities, rules, events and repository interfaces; pure Python, no I/O
+      infra/               # ORM models, mappers, SQL repositories + unit of work, external adapters
       jobs.py              # use cases the worker runs
     market/crawling/       # board adapters, discovery, politeness, one crawl run
 web/                        # TS client
@@ -99,6 +99,7 @@ web/                        # TS client
 8. Components never call an LLM SDK directly; they go through `kernel.ai_gateway`.
 9. `kernel/` imports no component, deployable or composition root.
 10. `advisor.profile` never imports `kernel.ai_gateway`, directly or indirectly. Ingestion is deterministic (domain decision 18), so a sync can never spend the user's key and the most hostile input never reaches a prompt from there.
+11. A component's use cases (`service`, `jobs`) reach stored data only through the repository interfaces its `domain/` defines, in domain types — never `sqlalchemy`, `kernel.db`, the outbox writer or their own `infra/` ([ADR 0010](decisions/0010-define-repositories-in-the-domain-in-domain-types.md)). Enforced for the components moved so far: `market`.
 
 ### Communication
 - **Queries** are synchronous in-process calls through a component's `__init__.py`. For example, `resume` asks `assessment` for the current RoleFit.
