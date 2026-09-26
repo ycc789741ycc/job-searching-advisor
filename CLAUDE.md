@@ -148,7 +148,8 @@ backend/src/
                 service.py  use cases; stored data only via domain/repositories.py
                 domain/     entities, rules, events, repository interfaces: no I/O,
                             no framework, no kernel
-                infra/      ORM models, mappers, SQL repositories + unit of work, adapters
+                infra/      ORM models, mappers, SqlAlchemy repositories + unit of work, adapters
+                factory.py  builds the component's services from a Database
                 jobs.py     use cases the worker runs
               market/crawling/  board adapters, discovery, politeness, one crawl run
 backend/tests/{unit,integration}/   each mirrors src/
@@ -163,9 +164,14 @@ registration and entrypoints never live inside `advisor/`. `kernel/` stays
 outside the application on purpose (ADR 0009).
 
 Repository interfaces are defined in each component's `domain/`, in entities and
-value objects — never ORM types — and implemented in `infra/` (ADR 0010).
-`market` has moved; the other components still query from `service.py` and move
-one at a time.
+value objects — never ORM types — and implemented in `infra/` (ADR 0011). Every
+repository has the same six methods (`create`, `get`, `get_list`, `get_count`,
+`update`, `delete`) and one filter per aggregate; `get_list` is newest first and
+paged. The six are written once in `kernel.db.repository.SqlAlchemyRepository`,
+with an in-memory twin for unit tests in `tests/unit/kernel/db/fake_repository.py`.
+A component's `factory.py` builds its services from a `Database`; nothing else
+constructs a repository. `market` has moved; the other components move one at a
+time.
 
 Nineteen `import-linter` contracts in `backend/.importlinter` enforce those
 boundaries, and they run in CI. If one breaks, the design is wrong, not the

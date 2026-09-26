@@ -255,7 +255,7 @@ async def test_an_assessment_citing_evidence_the_user_lacks_is_rejected(
 ) -> None:
     """The guard against invented claims, end to end."""
     from advisor.assessment import AssessmentService
-    from advisor.market import MarketService, SqlMarketUnitOfWork
+    from advisor.market import create_market_service
     from kernel.errors import EvidenceNotOwnedError
 
     await identity.set_credential(
@@ -266,7 +266,7 @@ async def test_an_assessment_citing_evidence_the_user_lacks_is_rejected(
     )
 
     gateway = AiGateway(settings=settings, credentials=identity, budget=identity)
-    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
+    market = create_market_service(database, manual_refresh_per_day=3)
     rolemap = RoleMapService(
         database,
         market=market,
@@ -318,7 +318,7 @@ async def test_the_role_map_estimate_runs_no_local_ml(
     """The api prices a role map without embeddings or clustering — it has no
     model cache, and a read-only filesystem to put one on."""
     import advisor.rolemap.service as rolemap_service
-    from advisor.market import MarketService, SqlMarketUnitOfWork
+    from advisor.market import create_market_service
 
     def no_local_ml(*args: object, **kwargs: object) -> None:
         raise AssertionError("the cost estimate must not embed or cluster")
@@ -329,7 +329,7 @@ async def test_the_role_map_estimate_runs_no_local_ml(
     await identity.set_credential(
         account, provider="anthropic", model="claude-opus-5", api_key="sk-test", base_url=None
     )
-    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
+    market = create_market_service(database, manual_refresh_per_day=3)
     await _own_market_only(market, account)
     for i in range(7):
         await market.paste_job_description(
@@ -370,7 +370,7 @@ async def test_a_role_map_analyses_only_the_ten_clusters_closest_to_the_profile(
     import re
 
     import advisor.rolemap.service as rolemap_service
-    from advisor.market import MarketService, SqlMarketUnitOfWork
+    from advisor.market import create_market_service
     from kernel.embeddings import EMBEDDING_DIMENSIONS, ClusterResult
 
     # A stand-in embedding: each "group-N" marker in a text adds weight on axis N.
@@ -392,7 +392,7 @@ async def test_a_role_map_analyses_only_the_ten_clusters_closest_to_the_profile(
     await identity.set_credential(
         account, provider="anthropic", model="claude-opus-5", api_key="sk-test", base_url=None
     )
-    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
+    market = create_market_service(database, manual_refresh_per_day=3)
     await _own_market_only(market, account)
     for group in range(12):
         for copy in range(3):
@@ -470,13 +470,13 @@ async def test_k_has_a_default_is_stored_per_user_and_changes_the_ceiling(
     account: uuid.UUID,
     other_account: uuid.UUID,
 ) -> None:
-    from advisor.market import MarketService, SqlMarketUnitOfWork
+    from advisor.market import create_market_service
     from kernel.errors import ValidationError
 
     await identity.set_credential(
         account, provider="anthropic", model="claude-opus-5", api_key="sk-test", base_url=None
     )
-    market = MarketService(SqlMarketUnitOfWork(database), manual_refresh_per_day=3)
+    market = create_market_service(database, manual_refresh_per_day=3)
     await _own_market_only(market, account)
     for i in range(60):
         await market.paste_job_description(

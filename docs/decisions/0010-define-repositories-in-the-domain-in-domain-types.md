@@ -1,6 +1,6 @@
 # 0010. Define repositories in the domain, in domain types
 
-**Status:** Accepted — 2026-09-27.
+**Status:** Superseded by [0011](0011-give-every-repository-the-same-six-methods.md) — 2026-09-27.
 
 ## Context
 
