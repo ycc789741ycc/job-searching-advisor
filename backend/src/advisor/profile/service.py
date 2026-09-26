@@ -10,11 +10,23 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from sqlalchemy import select
-
 from advisor.profile.domain import (
+    CareerPositionFilter,
     CitationError,
+    Evidence,
+    EvidenceFilter,
     EvidenceSource,
+    OwnerProfile,
+    ProfileUnitOfWork,
+    ProfileUpdated,
+    ProfileVersion,
+    ProfileVersionFilter,
+    ResumeFile,
+    ResumeFileFilter,
+    ResumeStatus,
+    SourceConnection,
+    SourceConnectionFilter,
+    SourceSynced,
     assert_citations_exist,
     total_experience_months,
 )
@@ -22,21 +34,12 @@ from advisor.profile.domain import (
     Position as PositionValue,
 )
 from advisor.profile.infra.connectors import Connector, EvidenceDraft
-from advisor.profile.infra.models import (
-    Evidence,
-    Position,
-    ProfileVersion,
-    ResumeFile,
-    SourceConnection,
-)
 from advisor.profile.infra.resume_parser import ACCEPTED_TYPES, parse
+from kernel.clock import utcnow
 from kernel.crypto import decrypt, encrypt
-from kernel.db import Database
-from kernel.db.base import utcnow
 from kernel.errors import NotFoundError, UpstreamFailedError, ValidationError
 from kernel.fetch import GuardedClient
 from kernel.logging import get_logger
-from kernel.outbox import EventName, emit
 from kernel.storage import ObjectStore, object_key
 
 __all__ = [
@@ -95,7 +98,7 @@ class ProfileSnapshot:
 class ProfileService:
     def __init__(
         self,
-        database: Database,
+        uow: ProfileUnitOfWork,
         *,
         object_store: ObjectStore,
         connectors: dict[str, Connector],
@@ -104,7 +107,7 @@ class ProfileService:
         http_timeout_seconds: float,
         user_agent: str,
     ) -> None:
-        self._db = database
+        self._uow = uow
         self._store = object_store
         self._connectors = connectors
         self._resume_max_bytes = resume_max_bytes
@@ -115,11 +118,9 @@ class ProfileService:
     # -- connections --------------------------------------------------------
 
     async def connections(self, owner_id: uuid.UUID) -> list[ConnectionView]:
-        async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(SourceConnection).where(SourceConnection.owner_id == owner_id)
-            )
-            return [_connection_view(row) for row in rows.scalars()]
+        async with self._uow.for_owner(owner_id) as mine:
+            found = await mine.connections.get_list(SourceConnectionFilter())
+        return [_connection_view(c) for c in found]
 
     async def store_connection(
         self,
@@ -135,38 +136,29 @@ class ProfileService:
         if kind not in self._connectors:
             raise ValidationError(f"unknown connector {kind!r}", kind=kind)
 
-        async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(SourceConnection).where(
-                    SourceConnection.owner_id == owner_id, SourceConnection.kind == kind
-                )
+        async with self._uow.for_owner(owner_id) as mine:
+            existing = await _connection(mine, kind)
+            connection = existing or SourceConnection.new(owner_id=owner_id, kind=kind)
+            connection.authorise(
+                encrypted_access_token=encrypt(access_token, context=str(owner_id)),
+                encrypted_refresh_token=(
+                    encrypt(refresh_token, context=str(owner_id)) if refresh_token else None
+                ),
+                scopes=scopes,
+                expires_at=expires_at,
+                account=account,
             )
-            connection = rows.scalar_one_or_none()
-            if connection is None:
-                connection = SourceConnection(owner_id=owner_id, kind=kind)
-                session.add(connection)
-            connection.encrypted_access_token = encrypt(access_token, context=str(owner_id))
-            connection.encrypted_refresh_token = (
-                encrypt(refresh_token, context=str(owner_id)) if refresh_token else None
-            )
-            connection.scopes = " ".join(scopes)
-            connection.token_expires_at = expires_at
-            connection.external_account = account
-            connection.status = "connected"
-            connection.last_error = None
-            await session.flush()
-            return _connection_view(connection)
+            if existing is None:
+                stored = await mine.connections.create(connection)
+            else:
+                stored = await mine.connections.update(connection)
+            return _connection_view(stored)
 
     async def disconnect(self, owner_id: uuid.UUID, kind: str) -> None:
-        async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(SourceConnection).where(
-                    SourceConnection.owner_id == owner_id, SourceConnection.kind == kind
-                )
-            )
-            connection = rows.scalar_one_or_none()
+        async with self._uow.for_owner(owner_id) as mine:
+            connection = await _connection(mine, kind)
             if connection is not None:
-                await session.delete(connection)
+                await mine.connections.delete(connection.id)
 
     async def sync_connection(self, owner_id: uuid.UUID, kind: str) -> int:
         """Fetch a source and turn it into Evidence. Worker `sync` queue only.
@@ -178,13 +170,8 @@ class ProfileService:
         if connector is None:
             raise ValidationError(f"unknown connector {kind!r}", kind=kind)
 
-        async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(SourceConnection).where(
-                    SourceConnection.owner_id == owner_id, SourceConnection.kind == kind
-                )
-            )
-            connection = rows.scalar_one_or_none()
+        async with self._uow.for_owner(owner_id) as mine:
+            connection = await _connection(mine, kind)
             if connection is None:
                 raise NotFoundError(f"{kind} is not connected", kind=kind)
             token = decrypt(connection.encrypted_access_token, context=str(owner_id))
@@ -196,11 +183,11 @@ class ProfileService:
             ) as client:
                 drafts = await connector.fetch(client, token)
         except UpstreamFailedError as exc:
-            async with self._db.for_user(owner_id) as session:
-                failed = await session.get(SourceConnection, connection_id)
+            async with self._uow.for_owner(owner_id) as mine:
+                failed = await mine.connections.get(connection_id)
                 if failed is not None:
-                    failed.status = "failed"
-                    failed.last_error = exc.message
+                    failed.sync_failed(exc.message)
+                    await mine.connections.update(failed)
             raise
 
         written = await self._write_evidence(
@@ -210,18 +197,12 @@ class ProfileService:
             source_connection_id=connection_id,
         )
 
-        async with self._db.for_user(owner_id) as session:
-            connection = await session.get(SourceConnection, connection_id)
-            if connection is not None:
-                connection.last_synced_at = utcnow()
-                connection.status = "connected"
-                connection.last_error = None
-            await emit(
-                session,
-                EventName.SOURCE_SYNCED,
-                {"kind": kind, "evidence": written},
-                owner_id=owner_id,
-            )
+        async with self._uow.for_owner(owner_id) as mine:
+            synced = await mine.connections.get(connection_id)
+            if synced is not None:
+                synced.synced(utcnow())
+                await mine.connections.update(synced)
+            mine.record(SourceSynced(owner_id=owner_id, kind=kind, evidence=written))
         return written
 
     # -- resume -------------------------------------------------------------
@@ -244,53 +225,51 @@ class ProfileService:
         key = object_key(owner_id, "resumes", f"{resume_id}")
         self._store.put(key, content, content_type)
 
-        async with self._db.for_user(owner_id) as session:
-            resume = ResumeFile(
-                id=resume_id,
-                owner_id=owner_id,
-                filename=filename,
-                storage_key=key,
-                content_type=content_type,
-                byte_size=len(content),
-                status="uploaded",
+        async with self._uow.for_owner(owner_id) as mine:
+            stored = await mine.resumes.create(
+                ResumeFile(
+                    id=resume_id,
+                    owner_id=owner_id,
+                    filename=filename,
+                    storage_key=key,
+                    content_type=content_type,
+                    byte_size=len(content),
+                    status=ResumeStatus.UPLOADED,
+                )
             )
-            session.add(resume)
-            await session.flush()
-            return _resume_view(resume)
+        return _resume_view(stored)
 
     async def parse_resume(self, owner_id: uuid.UUID, resume_id: uuid.UUID) -> int:
         """Worker `sync` queue. Parsing never happens in a request handler."""
-        async with self._db.for_user(owner_id) as session:
-            resume = await session.get(ResumeFile, resume_id)
-            if resume is None or resume.owner_id != owner_id:
+        async with self._uow.for_owner(owner_id) as mine:
+            resume = await mine.resumes.get(resume_id)
+            if resume is None:
                 raise NotFoundError("resume not found", resume_id=str(resume_id))
-            key, content_type, filename = resume.storage_key, resume.content_type, resume.filename
 
-        content = self._store.get(key)
+        content = self._store.get(resume.storage_key)
         try:
             parsed = parse(
                 content,
-                content_type=content_type,
-                filename=filename,
+                content_type=resume.content_type,
+                filename=resume.filename,
                 max_pages=self._resume_max_pages,
             )
         except ValidationError as exc:
-            async with self._db.for_user(owner_id) as session:
-                resume = await session.get(ResumeFile, resume_id)
-                if resume is not None:
-                    resume.status = "failed"
-                    resume.parse_error = exc.message
+            async with self._uow.for_owner(owner_id) as mine:
+                failed = await mine.resumes.get(resume_id)
+                if failed is not None:
+                    failed.parse_failed(exc.message)
+                    await mine.resumes.update(failed)
             raise
 
         written = await self._write_evidence(
             owner_id, EvidenceSource.RESUME, parsed.drafts, resume_file_id=resume_id
         )
-        async with self._db.for_user(owner_id) as session:
-            resume = await session.get(ResumeFile, resume_id)
-            if resume is not None:
-                resume.status = "parsed"
-                resume.parsed_at = utcnow()
-                resume.parse_error = None
+        async with self._uow.for_owner(owner_id) as mine:
+            done = await mine.resumes.get(resume_id)
+            if done is not None:
+                done.parsed(utcnow())
+                await mine.resumes.update(done)
         return written
 
     async def base_resume_text(self, owner_id: uuid.UUID, *, max_chars: int = 12_000) -> str | None:
@@ -299,37 +278,31 @@ class ProfileService:
         Worker only — parsing never happens in a request handler. None when the
         user has not uploaded one that parsed.
         """
-        async with self._db.for_user(owner_id) as session:
-            latest = await session.execute(
-                select(ResumeFile)
-                .where(ResumeFile.owner_id == owner_id, ResumeFile.status == "parsed")
-                .order_by(ResumeFile.parsed_at.desc())
-                .limit(1)
-            )
-            resume = latest.scalar_one_or_none()
-            if resume is None:
-                return None
-            key, content_type, filename = resume.storage_key, resume.content_type, resume.filename
+        async with self._uow.for_owner(owner_id) as mine:
+            resume = await mine.resumes.get_latest_parsed()
+        if resume is None:
+            return None
 
         parsed = parse(
-            self._store.get(key),
-            content_type=content_type,
-            filename=filename,
+            self._store.get(resume.storage_key),
+            content_type=resume.content_type,
+            filename=resume.filename,
             max_pages=self._resume_max_pages,
         )
         return parsed.text[:max_chars]
 
     async def resumes(self, owner_id: uuid.UUID) -> list[ResumeFileView]:
-        async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(select(ResumeFile).where(ResumeFile.owner_id == owner_id))
-            return [_resume_view(row) for row in rows.scalars()]
+        """Newest first. One user's uploads: a small set, read whole."""
+        async with self._uow.for_owner(owner_id) as mine:
+            uploaded = await mine.resumes.get_list(ResumeFileFilter())
+        return [_resume_view(r) for r in uploaded]
 
     async def resume_download_url(self, owner_id: uuid.UUID, resume_id: uuid.UUID) -> str:
-        async with self._db.for_user(owner_id) as session:
-            resume = await session.get(ResumeFile, resume_id)
-            if resume is None or resume.owner_id != owner_id:
-                raise NotFoundError("resume not found", resume_id=str(resume_id))
-            return self._store.signed_url(resume.storage_key)
+        async with self._uow.for_owner(owner_id) as mine:
+            resume = await mine.resumes.get(resume_id)
+        if resume is None:
+            raise NotFoundError("resume not found", resume_id=str(resume_id))
+        return self._store.signed_url(resume.storage_key)
 
     # -- answers ------------------------------------------------------------
 
@@ -339,9 +312,10 @@ class ProfileService:
         """A reply to a follow-up question, stored as self-reported Evidence."""
         if not answer.strip():
             raise ValidationError("an answer is required")
+        reference = f"answer:{question_id}"
         drafts = [
             EvidenceDraft(
-                external_ref=f"answer:{question_id}",
+                external_ref=reference,
                 reference="Your answer",
                 fact=f"{question} — {answer.strip()}",
                 observed_on=utcnow().date(),
@@ -349,49 +323,42 @@ class ProfileService:
             )
         ]
         await self._write_evidence(owner_id, EvidenceSource.SELF_REPORTED, drafts)
-        async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(
-                select(Evidence).where(
-                    Evidence.owner_id == owner_id,
-                    Evidence.external_ref == f"answer:{question_id}",
-                )
+        async with self._uow.for_owner(owner_id) as mine:
+            stored = await mine.evidence.get_list(
+                EvidenceFilter(source=EvidenceSource.SELF_REPORTED, external_refs=(reference,)),
+                page_size=1,
             )
-            return _evidence_view(rows.scalar_one())
+        if not stored:
+            raise NotFoundError("the answer was not stored", question_id=question_id)
+        return _evidence_view(stored[0])
 
     # -- reading the profile ------------------------------------------------
 
     async def snapshot(self, owner_id: uuid.UUID) -> ProfileSnapshot:
-        async with self._db.for_user(owner_id) as session:
-            evidence_rows = await session.execute(
-                select(Evidence).where(Evidence.owner_id == owner_id).order_by(Evidence.source)
-            )
-            position_rows = await session.execute(
-                select(Position).where(Position.owner_id == owner_id)
-            )
-            version_row = await session.execute(
-                select(ProfileVersion).where(ProfileVersion.owner_id == owner_id)
-            )
-            version = version_row.scalar_one_or_none()
-            positions = tuple(
-                PositionValue(
-                    title=p.title, company=p.company, started_on=p.started_on, ended_on=p.ended_on
-                )
-                for p in position_rows.scalars()
-            )
-            return ProfileSnapshot(
-                version=version.version if version is not None else 0,
-                evidence=tuple(_evidence_view(e) for e in evidence_rows.scalars()),
-                positions=positions,
-                total_experience_months=total_experience_months(
-                    list(positions), as_of=utcnow().date()
-                ),
-            )
+        """Every fact, grouped by source, with the timeline and the version.
+
+        One user's profile: bounded by what they connected and uploaded, and
+        read whole because the assessment reasons over all of it.
+        """
+        async with self._uow.for_owner(owner_id) as mine:
+            evidence = await mine.evidence.get_list(EvidenceFilter())
+            timeline = await mine.positions.get_list(CareerPositionFilter())
+            versions = await mine.versions.get_list(ProfileVersionFilter(), page_size=1)
+        positions = tuple(p.value for p in timeline)
+        return ProfileSnapshot(
+            version=versions[0].version if versions else 0,
+            evidence=tuple(
+                _evidence_view(e) for e in sorted(evidence, key=lambda e: str(e.source))
+            ),
+            positions=positions,
+            total_experience_months=total_experience_months(list(positions), as_of=utcnow().date()),
+        )
 
     async def evidence_ids(self, owner_id: uuid.UUID) -> set[str]:
         """Used to reject AI output citing evidence this user does not have."""
-        async with self._db.for_user(owner_id) as session:
-            rows = await session.execute(select(Evidence.id).where(Evidence.owner_id == owner_id))
-            return {str(row) for row in rows.scalars()}
+        async with self._uow.for_owner(owner_id) as mine:
+            evidence = await mine.evidence.get_list(EvidenceFilter())
+        return {str(e.id) for e in evidence}
 
     # -- internals ----------------------------------------------------------
 
@@ -406,30 +373,26 @@ class ProfileService:
     ) -> int:
         """Upsert by ``external_ref`` so a re-sync updates rather than duplicates.
 
-        Bumps the profile version and emits ``ProfileUpdated`` in the same
+        Bumps the profile version and records ``ProfileUpdated`` in the same
         transaction. Per domain section 2.9 this does not start an analysis —
         the user asks for that explicitly.
         """
         if not drafts:
             return 0
 
-        async with self._db.for_user(owner_id) as session:
-            existing_rows = await session.execute(
-                select(Evidence).where(
-                    Evidence.owner_id == owner_id,
-                    Evidence.source == str(source),
-                    Evidence.external_ref.in_([d.external_ref for d in drafts]),
-                )
+        async with self._uow.for_owner(owner_id) as mine:
+            existing = await mine.evidence.get_list(
+                EvidenceFilter(source=source, external_refs=tuple(d.external_ref for d in drafts))
             )
-            by_ref = {row.external_ref: row for row in existing_rows.scalars()}
+            by_ref = {e.external_ref: e for e in existing}
 
             for draft in drafts:
-                row = by_ref.get(draft.external_ref)
-                if row is None:
-                    session.add(
-                        Evidence(
+                known = by_ref.get(draft.external_ref)
+                if known is None:
+                    await mine.evidence.create(
+                        Evidence.cited(
                             owner_id=owner_id,
-                            source=str(source),
+                            source=source,
                             external_ref=draft.external_ref,
                             reference=draft.reference,
                             fact=draft.fact,
@@ -440,58 +403,66 @@ class ProfileService:
                         )
                     )
                 else:
-                    row.reference = draft.reference
-                    row.fact = draft.fact
-                    row.observed_on = draft.observed_on
-                    row.confidence = draft.confidence
+                    known.restate(
+                        reference=draft.reference,
+                        fact=draft.fact,
+                        observed_on=draft.observed_on,
+                        confidence=draft.confidence,
+                    )
+                    await mine.evidence.update(known)
 
-            version_rows = await session.execute(
-                select(ProfileVersion).where(ProfileVersion.owner_id == owner_id)
-            )
-            version = version_rows.scalar_one_or_none()
-            if version is None:
-                version = ProfileVersion(owner_id=owner_id, version=1, updated_at=utcnow())
-                session.add(version)
+            now = utcnow()
+            versions = await mine.versions.get_list(ProfileVersionFilter(), page_size=1)
+            if versions:
+                version = versions[0]
+                version.bump(now)
+                version = await mine.versions.update(version)
             else:
-                version.version += 1
-                version.updated_at = utcnow()
-            await session.flush()
+                version = await mine.versions.create(
+                    ProfileVersion.first(owner_id=owner_id, at=now)
+                )
 
-            await emit(
-                session,
-                EventName.PROFILE_UPDATED,
-                {"source": str(source), "version": version.version, "count": len(drafts)},
-                owner_id=owner_id,
+            mine.record(
+                ProfileUpdated(
+                    owner_id=owner_id, source=source, version=version.version, count=len(drafts)
+                )
             )
             return len(drafts)
 
 
-def _connection_view(row: SourceConnection) -> ConnectionView:
+async def _connection(mine: OwnerProfile, kind: str) -> SourceConnection | None:
+    found = await mine.connections.get_list(SourceConnectionFilter(kind=kind), page_size=1)
+    return found[0] if found else None
+
+
+def _connection_view(connection: SourceConnection) -> ConnectionView:
     return ConnectionView(
-        kind=row.kind,
-        account=row.external_account,
-        status=row.status,
-        last_synced_at=row.last_synced_at,
-        last_error=row.last_error,
+        kind=connection.kind,
+        account=connection.external_account,
+        status=str(connection.status),
+        last_synced_at=connection.last_synced_at,
+        last_error=connection.last_error,
     )
 
 
-def _evidence_view(row: Evidence) -> EvidenceView:
+def _evidence_view(evidence: Evidence) -> EvidenceView:
     return EvidenceView(
-        id=row.id,
-        source=EvidenceSource(row.source),
-        reference=row.reference,
-        fact=row.fact,
-        observed_on=row.observed_on,
-        confidence=row.confidence,
+        id=evidence.id,
+        source=evidence.source,
+        reference=evidence.reference,
+        fact=evidence.fact,
+        observed_on=evidence.observed_on,
+        confidence=evidence.confidence,
     )
 
 
-def _resume_view(row: ResumeFile) -> ResumeFileView:
+def _resume_view(resume: ResumeFile) -> ResumeFileView:
+    # Set by the database when the upload was stored; always present on a read.
+    assert resume.created_at is not None, "a stored resume has an upload time"
     return ResumeFileView(
-        id=row.id,
-        filename=row.filename,
-        status=row.status,
-        parse_error=row.parse_error,
-        uploaded_at=row.created_at,
+        id=resume.id,
+        filename=resume.filename,
+        status=str(resume.status),
+        parse_error=resume.parse_error,
+        uploaded_at=resume.created_at,
     )

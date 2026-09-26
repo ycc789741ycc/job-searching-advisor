@@ -100,7 +100,7 @@ web/                        # TS client
 8. Components never call an LLM SDK directly; they go through `kernel.ai_gateway`.
 9. `kernel/` imports no component, deployable or composition root.
 10. `advisor.profile` never imports `kernel.ai_gateway`, directly or indirectly. Ingestion is deterministic (domain decision 18), so a sync can never spend the user's key and the most hostile input never reaches a prompt from there.
-11. Only a component's `infra/` (and the factory that wires it) imports the ORM, `kernel.db` or the outbox writer. Its domain, use cases and other modules reach stored data through repository interfaces its `domain/` defines — six methods (`create`, `get`, `get_list`, `get_count`, `update`, `delete`) and one filter per aggregate, in domain types ([ADR 0011](decisions/0011-give-every-repository-the-same-six-methods.md)). Enforced for the components moved so far: `market`.
+11. Only a component's `infra/` (and the factory that wires it) imports the ORM, `kernel.db` or the outbox writer. Its domain, use cases and other modules reach stored data through repository interfaces its `domain/` defines — six methods (`create`, `get`, `get_list`, `get_count`, `update`, `delete`) and one filter per aggregate, in domain types ([ADR 0011](decisions/0011-give-every-repository-the-same-six-methods.md)). Enforced for the components moved so far: `market`, `profile`.
 
 ### Communication
 - **Queries** are synchronous in-process calls through a component's `__init__.py`. For example, `resume` asks `assessment` for the current RoleFit.

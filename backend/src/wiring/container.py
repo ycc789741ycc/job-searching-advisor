@@ -20,7 +20,12 @@ from advisor.identity import (
     IdentityService,
 )
 from advisor.market import CrawlIngest, MarketService, create_market_service
-from advisor.profile import GitHubConnector, JiraConnector, ProfileService
+from advisor.profile import (
+    GitHubConnector,
+    JiraConnector,
+    ProfileService,
+    create_profile_service,
+)
 from advisor.resume import ResumeService
 from advisor.rolemap import RoleMapService
 from advisor.target import TargetService
@@ -139,7 +144,7 @@ def build(settings: Settings | None = None) -> Container:
     # the kernel stays free of any domain import.
     gateway = AiGateway(settings=settings, credentials=identity, budget=identity)
 
-    profile = ProfileService(
+    profile = create_profile_service(
         database,
         object_store=object_store,
         connectors={

@@ -21,7 +21,7 @@ import pytest_asyncio
 from advisor.assessment import AssessmentService
 from advisor.identity import IdentityService
 from advisor.market import MarketService, create_market_service
-from advisor.profile import ProfileService
+from advisor.profile import create_profile_service
 from advisor.resume import (
     Options,
     ResumeService,
@@ -99,7 +99,7 @@ async def world(
     # The api creates the bucket at startup, but this tier assumes only infra
     # that is up and migrated — on fresh infra nothing has created it yet.
     store.ensure_bucket()
-    profile = ProfileService(
+    profile = create_profile_service(
         database,
         object_store=store,
         connectors={},

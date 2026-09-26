@@ -419,6 +419,9 @@ source_modules =
     advisor.market.jobs
     advisor.market.crawling
     advisor.market.baseline
+    advisor.profile.domain
+    advisor.profile.service
+    advisor.profile.jobs
 forbidden_modules =
     sqlalchemy
     pgvector
@@ -427,3 +430,7 @@ forbidden_modules =
     kernel.outbox.models
     kernel.outbox.writer
     advisor.market.infra
+    advisor.profile.infra.models
+    advisor.profile.infra.mappers
+    advisor.profile.infra.repositories
+    advisor.profile.infra.unit_of_work
