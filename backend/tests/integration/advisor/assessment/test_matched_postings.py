@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import text
 
 from advisor.assessment import AssessmentService, FitView
-from advisor.identity import IdentityService
+from advisor.identity import create_identity_service
 from advisor.market import (
     NormalizedPosting,
     SourceKind,
@@ -145,7 +145,7 @@ async def test_top_matched_lists_open_postings_in_live_roles_by_role_fit(
             account, company_name=northwind, role_title="senior backend engineer"
         )
 
-        identity = IdentityService(database, default_monthly_cap_usd=Decimal("20"))
+        identity = create_identity_service(database, default_monthly_cap_usd=Decimal("20"))
         profile = create_profile_service(
             database,
             object_store=ObjectStore(settings),

@@ -13,7 +13,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import text
 
-from advisor.identity import IdentityService
+from advisor.identity import IdentityService, create_identity_service
 from advisor.profile import ProfileService, create_profile_service
 from advisor.rolemap import RoleMapService
 from advisor.rolemap.domain import DEFAULT_ROLE_COUNT
@@ -69,7 +69,7 @@ async def _own_market_only(market, account: uuid.UUID) -> None:
 
 @pytest.fixture
 def identity(database: Database) -> IdentityService:
-    return IdentityService(database, default_monthly_cap_usd=Decimal("20"))
+    return create_identity_service(database, default_monthly_cap_usd=Decimal("20"))
 
 
 # -- the credential ---------------------------------------------------------

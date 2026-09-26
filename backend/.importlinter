@@ -422,6 +422,10 @@ source_modules =
     advisor.profile.domain
     advisor.profile.service
     advisor.profile.jobs
+    advisor.identity.domain
+    advisor.identity.service
+    advisor.identity.auth
+    advisor.identity.google
 forbidden_modules =
     sqlalchemy
     pgvector
@@ -434,3 +438,7 @@ forbidden_modules =
     advisor.profile.infra.mappers
     advisor.profile.infra.repositories
     advisor.profile.infra.unit_of_work
+    advisor.identity.infra.models
+    advisor.identity.infra.mappers
+    advisor.identity.infra.repositories
+    advisor.identity.infra.unit_of_work
