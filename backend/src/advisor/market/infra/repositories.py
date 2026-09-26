@@ -1,417 +1,338 @@
-"""SQL implementations of the market's repository interfaces.
+"""SQLAlchemy implementations of the market's repositories.
 
-Every query here is the one the use cases ran before repositories existed, moved
-unchanged. Owner-zone repositories still filter on ``owner_id`` although RLS
-already does: the database policy is the guard, the filter keeps plans honest.
+The six methods come from ``kernel.db.repository.SqlAlchemyRepository``. Each
+class here names its model, maps rows to entities and back, and turns its
+filter's set fields into conditions.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from typing import ClassVar
 
-from sqlalchemy import func, or_, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import exists, or_, select, update
+from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
 
 from advisor.market.domain import (
     Company,
+    CompanyFilter,
     CompanySubscription,
-    Coverage,
     CrawlSource,
-    DueSource,
+    CrawlSourceFilter,
     JobPosting,
+    JobPostingFilter,
+    ManualRefresh,
+    ManualRefreshFilter,
+    MarketPreference,
+    MarketPreferenceFilter,
+    PostingEmbedding,
+    PostingEmbeddingFilter,
     PostingScope,
     PostingStatus,
     PrivateJobPosting,
-    SalaryRange,
+    PrivateJobPostingFilter,
     SourceOrigin,
+    SubscriptionFilter,
 )
 from advisor.market.infra import mappers, models
-from kernel.errors import NotFoundError
+from kernel.db.repository import SqlAlchemyRepository
 
 # --- shared zone -----------------------------------------------------------
 
 
-class SqlCompanyRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
+class SqlAlchemyCompanyRepository(SqlAlchemyRepository[Company, models.Company, CompanyFilter]):
+    model = models.Company
+    id_column = models.Company.id
+    created_column = models.Company.created_at
+    noun = "company"
 
-    async def get(self, company_id: uuid.UUID) -> Company | None:
-        row = await self._session.get(models.Company, company_id)
-        return mappers.company(row) if row is not None else None
+    def to_entity(self, row: models.Company) -> Company:
+        return mappers.company(row)
 
-    async def by_normalized_name(self, normalized_name: str) -> Company | None:
-        result = await self._session.execute(
-            select(models.Company).where(models.Company.normalized_name == normalized_name)
-        )
-        row = result.scalar_one_or_none()
-        return mappers.company(row) if row is not None else None
+    def to_row(self, entity: Company) -> models.Company:
+        return mappers.company_row(entity)
 
-    async def add(self, company: Company) -> None:
-        self._session.add(mappers.company_row(company))
-        await self._session.flush()
+    def apply(self, row: models.Company, entity: Company) -> None:
+        mappers.apply_company(row, entity)
+
+    def id_of(self, entity: Company) -> uuid.UUID:
+        return entity.id
+
+    def conditions(self, filter: CompanyFilter) -> list[ColumnElement[bool]]:
+        found: list[ColumnElement[bool]] = []
+        if filter.ids is not None:
+            found.append(models.Company.id.in_(filter.ids))
+        if filter.normalized_name is not None:
+            found.append(models.Company.normalized_name == filter.normalized_name)
+        return found
 
 
-class SqlCrawlSourceRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
+class SqlAlchemyCrawlSourceRepository(
+    SqlAlchemyRepository[CrawlSource, models.CrawlSource, CrawlSourceFilter]
+):
+    model = models.CrawlSource
+    id_column = models.CrawlSource.id
+    created_column = models.CrawlSource.created_at
+    noun = "crawl source"
 
-    async def get(self, source_id: uuid.UUID) -> CrawlSource | None:
-        row = await self._session.get(models.CrawlSource, source_id)
-        return mappers.crawl_source(row) if row is not None else None
+    def to_entity(self, row: models.CrawlSource) -> CrawlSource:
+        return mappers.crawl_source(row)
 
-    async def due(self) -> list[DueSource]:
-        rows = await self._session.execute(
-            select(models.CrawlSource, models.Company.name)
-            .outerjoin(models.Company, models.CrawlSource.company_id == models.Company.id)
-            .where(models.CrawlSource.status == "active")
-        )
-        return [
-            DueSource(source=mappers.crawl_source(source), company_name=company_name)
-            for source, company_name in rows.all()
-        ]
+    def to_row(self, entity: CrawlSource) -> models.CrawlSource:
+        return mappers.crawl_source_row(entity)
 
-    async def by_endpoint(self, endpoint: str) -> CrawlSource | None:
-        result = await self._session.execute(
-            select(models.CrawlSource).where(models.CrawlSource.endpoint == endpoint)
-        )
-        row = result.scalar_one_or_none()
-        return mappers.crawl_source(row) if row is not None else None
+    def apply(self, row: models.CrawlSource, entity: CrawlSource) -> None:
+        mappers.apply_crawl_source(row, entity)
 
-    async def by_kind_and_endpoint(self, kind: str, endpoint: str) -> CrawlSource | None:
-        result = await self._session.execute(
-            select(models.CrawlSource).where(
-                models.CrawlSource.kind == kind, models.CrawlSource.endpoint == endpoint
+    def id_of(self, entity: CrawlSource) -> uuid.UUID:
+        return entity.id
+
+    def conditions(self, filter: CrawlSourceFilter) -> list[ColumnElement[bool]]:
+        source = models.CrawlSource
+        found: list[ColumnElement[bool]] = []
+        if filter.status is not None:
+            found.append(source.status == str(filter.status))
+        if filter.origin is not None:
+            found.append(source.origin == str(filter.origin))
+        if filter.company_id is not None:
+            found.append(source.company_id == filter.company_id)
+        if filter.kind is not None:
+            found.append(source.kind == filter.kind)
+        if filter.endpoint is not None:
+            found.append(source.endpoint == filter.endpoint)
+        return found
+
+
+class SqlAlchemyJobPostingRepository(
+    SqlAlchemyRepository[JobPosting, models.JobPosting, JobPostingFilter]
+):
+    model = models.JobPosting
+    id_column = models.JobPosting.id
+    created_column = models.JobPosting.created_at
+    noun = "job posting"
+
+    def to_entity(self, row: models.JobPosting) -> JobPosting:
+        return mappers.job_posting(row)
+
+    def to_row(self, entity: JobPosting) -> models.JobPosting:
+        return mappers.job_posting_row(entity)
+
+    def apply(self, row: models.JobPosting, entity: JobPosting) -> None:
+        mappers.apply_job_posting(row, entity)
+
+    def id_of(self, entity: JobPosting) -> uuid.UUID:
+        return entity.id
+
+    def conditions(self, filter: JobPostingFilter) -> list[ColumnElement[bool]]:
+        posting = models.JobPosting
+        found: list[ColumnElement[bool]] = []
+        if filter.ids is not None:
+            found.append(posting.id.in_(filter.ids))
+        if filter.canonical_key is not None:
+            found.append(posting.canonical_key == filter.canonical_key)
+        if filter.status is not None:
+            found.append(posting.status == str(filter.status))
+        if filter.has_salary is True:
+            found += [posting.salary_min.is_not(None), posting.salary_currency.is_not(None)]
+        elif filter.has_salary is False:
+            found.append(posting.salary_min.is_(None))
+        if filter.missing_embedding_for is not None:
+            embedding = models.PostingEmbedding
+            found.append(
+                ~exists().where(
+                    embedding.job_posting_id == posting.id,
+                    embedding.model_name == filter.missing_embedding_for,
+                )
             )
-        )
-        row = result.scalar_one_or_none()
-        return mappers.crawl_source(row) if row is not None else None
-
-    async def exists_for_company(self, company_id: uuid.UUID) -> bool:
-        result = await self._session.execute(
-            select(models.CrawlSource).where(models.CrawlSource.company_id == company_id)
-        )
-        return result.scalar_one_or_none() is not None
-
-    async def baseline(self) -> list[CrawlSource]:
-        rows = await self._session.execute(
-            select(models.CrawlSource).where(
-                models.CrawlSource.origin == str(SourceOrigin.BASELINE)
-            )
-        )
-        return [mappers.crawl_source(row) for row in rows.scalars()]
-
-    async def add(self, source: CrawlSource) -> None:
-        self._session.add(mappers.crawl_source_row(source))
-        await self._session.flush()
-
-    async def save(self, source: CrawlSource) -> None:
-        row = await self._session.get(models.CrawlSource, source.id)
-        if row is None:
-            raise NotFoundError("crawl source is not stored", id=str(source.id))
-        mappers.apply_crawl_source(row, source)
-
-
-class SqlJobPostingRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
-
-    async def by_canonical_key(self, key: str) -> JobPosting | None:
-        result = await self._session.execute(
-            select(models.JobPosting).where(models.JobPosting.canonical_key == key)
-        )
-        row = result.scalar_one_or_none()
-        return mappers.job_posting(row) if row is not None else None
-
-    async def add(self, posting: JobPosting) -> None:
-        self._session.add(mappers.job_posting_row(posting))
-        await self._session.flush()
-
-    async def save(self, posting: JobPosting) -> None:
-        row = await self._session.get(models.JobPosting, posting.id)
-        if row is None:
-            raise NotFoundError("job posting is not stored", id=str(posting.id))
-        mappers.apply_job_posting(row, posting)
+        return found
 
     async def expire_unseen(self, source_id: uuid.UUID, seen_keys: set[str]) -> int:
+        posting = models.JobPosting
         query = (
-            update(models.JobPosting)
-            .where(
-                models.JobPosting.crawl_source_id == source_id,
-                models.JobPosting.status == str(PostingStatus.OPEN),
-            )
+            update(posting)
+            .where(posting.crawl_source_id == source_id, posting.status == str(PostingStatus.OPEN))
             .values(status=str(PostingStatus.EXPIRED))
         )
         if seen_keys:
-            query = query.where(models.JobPosting.canonical_key.notin_(seen_keys))
+            query = query.where(posting.canonical_key.notin_(seen_keys))
         result = await self._session.execute(query)
         return int(getattr(result, "rowcount", 0) or 0)
 
-    async def open_in_scope(self, scope: PostingScope) -> list[tuple[JobPosting, str]]:
+    async def get_open_in_scope(self, scope: PostingScope) -> list[JobPosting]:
         posting = models.JobPosting
-        query = (
-            select(posting, models.Company.name)
-            .join(models.Company, posting.company_id == models.Company.id)
-            .where(posting.status == str(PostingStatus.OPEN))
-        )
-        conditions: list[ColumnElement[bool]] = []
+        either: list[ColumnElement[bool]] = []
         if scope.company_ids:
-            conditions.append(posting.company_id.in_(scope.company_ids))
+            either.append(posting.company_id.in_(scope.company_ids))
         if scope.markets:
-            conditions.append(posting.location.in_(scope.markets))
+            either.append(posting.location.in_(scope.markets))
         if scope.includes_baseline:
-            conditions.append(
+            either.append(
                 posting.crawl_source_id.in_(
                     select(models.CrawlSource.id).where(
                         models.CrawlSource.origin == str(SourceOrigin.BASELINE)
                     )
                 )
             )
-        query = query.where(or_(*conditions) if len(conditions) > 1 else conditions[0])
-        rows = await self._session.execute(query)
-        return [(mappers.job_posting(row), company_name) for row, company_name in rows.all()]
-
-    async def salary_ranges(self, posting_ids: list[uuid.UUID]) -> list[SalaryRange]:
-        posting = models.JobPosting
         rows = await self._session.execute(
-            select(posting.salary_min, posting.salary_max, posting.salary_currency).where(
-                posting.id.in_(posting_ids),
-                posting.salary_min.is_not(None),
-                posting.salary_currency.is_not(None),
-            )
-        )
-        return [
-            SalaryRange(min_amount=low, max_amount=high or low, currency=currency)
-            for low, high, currency in rows.all()
-        ]
-
-    async def needing_embeddings(self, model_name: str, limit: int) -> list[JobPosting]:
-        embedding = models.PostingEmbedding
-        rows = await self._session.execute(
-            select(models.JobPosting)
-            .outerjoin(
-                embedding,
-                (embedding.job_posting_id == models.JobPosting.id)
-                & (embedding.model_name == model_name),
-            )
-            .where(embedding.job_posting_id.is_(None))
-            .limit(limit)
+            select(posting)
+            .where(posting.status == str(PostingStatus.OPEN), or_(*either))
+            .order_by(posting.created_at.desc(), posting.id.desc())
         )
         return [mappers.job_posting(row) for row in rows.scalars()]
 
-    async def embeddings(
-        self, posting_ids: list[uuid.UUID], model_name: str
-    ) -> dict[uuid.UUID, list[float]]:
+
+class SqlAlchemyPostingEmbeddingRepository(
+    SqlAlchemyRepository[PostingEmbedding, models.PostingEmbedding, PostingEmbeddingFilter]
+):
+    model = models.PostingEmbedding
+    id_column = models.PostingEmbedding.job_posting_id
+    created_column = models.PostingEmbedding.computed_at
+    noun = "posting embedding"
+
+    def to_entity(self, row: models.PostingEmbedding) -> PostingEmbedding:
+        return mappers.posting_embedding(row)
+
+    def to_row(self, entity: PostingEmbedding) -> models.PostingEmbedding:
+        return mappers.posting_embedding_row(entity)
+
+    def apply(self, row: models.PostingEmbedding, entity: PostingEmbedding) -> None:
+        mappers.apply_posting_embedding(row, entity)
+
+    def id_of(self, entity: PostingEmbedding) -> uuid.UUID:
+        return entity.posting_id
+
+    def conditions(self, filter: PostingEmbeddingFilter) -> list[ColumnElement[bool]]:
         embedding = models.PostingEmbedding
-        rows = await self._session.execute(
-            select(embedding.job_posting_id, embedding.vector).where(
-                embedding.job_posting_id.in_(posting_ids),
-                embedding.model_name == model_name,
-            )
-        )
-        return {row[0]: list(row[1]) for row in rows.all()}
-
-    async def add_embeddings(self, model_name: str, vectors: dict[uuid.UUID, list[float]]) -> None:
-        for posting_id, vector in vectors.items():
-            self._session.add(
-                models.PostingEmbedding(
-                    job_posting_id=posting_id, model_name=model_name, vector=vector
-                )
-            )
-
-
-# --- fan-out ---------------------------------------------------------------
-
-
-class SqlWatchers:
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
-
-    async def of_company(self, company_id: uuid.UUID) -> set[uuid.UUID]:
-        rows = await self._session.execute(
-            select(models.CompanySubscription.owner_id)
-            .where(models.CompanySubscription.company_id == company_id)
-            .distinct()
-        )
-        return set(rows.scalars())
-
-    async def of_market(self, market: str) -> set[uuid.UUID]:
-        rows = await self._session.execute(
-            select(models.MarketPreference.owner_id)
-            .where(models.MarketPreference.market == market)
-            .distinct()
-        )
-        return set(rows.scalars())
-
-    async def watched_boards(self) -> list[tuple[uuid.UUID, str, str | None]]:
-        subscription = models.CompanySubscription
-        rows = await self._session.execute(
-            select(subscription.company_id, subscription.company_name, subscription.url).distinct()
-        )
-        return [(company_id, name, url) for company_id, name, url in rows.all()]
+        found: list[ColumnElement[bool]] = []
+        if filter.posting_ids is not None:
+            found.append(embedding.job_posting_id.in_(filter.posting_ids))
+        if filter.model_name is not None:
+            found.append(embedding.model_name == filter.model_name)
+        return found
 
 
 # --- owner zone ------------------------------------------------------------
 
 
-class SqlSubscriptionRepository:
-    def __init__(self, session: AsyncSession, owner_id: uuid.UUID) -> None:
-        self._session = session
-        self._owner_id = owner_id
+class SqlAlchemySubscriptionRepository(
+    SqlAlchemyRepository[CompanySubscription, models.CompanySubscription, SubscriptionFilter]
+):
+    model = models.CompanySubscription
+    id_column = models.CompanySubscription.id
+    created_column = models.CompanySubscription.created_at
+    owner_column: ClassVar[InstrumentedAttribute[uuid.UUID] | None] = (
+        models.CompanySubscription.owner_id
+    )
+    noun = "subscription"
 
-    async def all(self) -> list[CompanySubscription]:
-        rows = await self._session.execute(
-            select(models.CompanySubscription).where(
-                models.CompanySubscription.owner_id == self._owner_id
-            )
-        )
-        return [mappers.subscription(row) for row in rows.scalars()]
+    def to_entity(self, row: models.CompanySubscription) -> CompanySubscription:
+        return mappers.subscription(row)
 
-    async def get(self, subscription_id: uuid.UUID) -> CompanySubscription | None:
-        row = await self._own(subscription_id)
-        return mappers.subscription(row) if row is not None else None
+    def to_row(self, entity: CompanySubscription) -> models.CompanySubscription:
+        return mappers.subscription_row(entity)
 
-    async def find(self, company_id: uuid.UUID, role_title: str) -> CompanySubscription | None:
-        result = await self._session.execute(
-            select(models.CompanySubscription).where(
-                models.CompanySubscription.owner_id == self._owner_id,
-                models.CompanySubscription.company_id == company_id,
-                models.CompanySubscription.role_title == role_title,
-            )
-        )
-        row = result.scalar_one_or_none()
-        return mappers.subscription(row) if row is not None else None
+    def apply(self, row: models.CompanySubscription, entity: CompanySubscription) -> None:
+        mappers.apply_subscription(row, entity)
 
-    async def at_company(self, company_id: uuid.UUID) -> list[CompanySubscription]:
-        rows = await self._session.execute(
-            select(models.CompanySubscription).where(
-                models.CompanySubscription.owner_id == self._owner_id,
-                models.CompanySubscription.company_id == company_id,
-            )
-        )
-        return [mappers.subscription(row) for row in rows.scalars()]
+    def id_of(self, entity: CompanySubscription) -> uuid.UUID:
+        return entity.id
 
-    async def add(self, subscription: CompanySubscription) -> None:
-        self._session.add(mappers.subscription_row(subscription))
-        await self._session.flush()
-
-    async def save(self, subscription: CompanySubscription) -> None:
-        row = await self._own(subscription.id)
-        if row is None:
-            raise NotFoundError("subscription is not stored", id=str(subscription.id))
-        mappers.apply_subscription(row, subscription)
-        await self._session.flush()
-
-    async def remove(self, subscription_id: uuid.UUID) -> None:
-        row = await self._own(subscription_id)
-        if row is not None:
-            await self._session.delete(row)
-
-    async def set_coverage(self, company_id: uuid.UUID, coverage: Coverage) -> None:
-        await self._session.execute(
-            update(models.CompanySubscription)
-            .where(
-                models.CompanySubscription.owner_id == self._owner_id,
-                models.CompanySubscription.company_id == company_id,
-            )
-            .values(coverage=str(coverage))
-        )
-
-    async def _own(self, subscription_id: uuid.UUID) -> models.CompanySubscription | None:
-        row = await self._session.get(models.CompanySubscription, subscription_id)
-        return row if row is not None and row.owner_id == self._owner_id else None
+    def conditions(self, filter: SubscriptionFilter) -> list[ColumnElement[bool]]:
+        subscription = models.CompanySubscription
+        found: list[ColumnElement[bool]] = []
+        if filter.company_id is not None:
+            found.append(subscription.company_id == filter.company_id)
+        if filter.role_title is not None:
+            found.append(subscription.role_title == filter.role_title)
+        return found
 
 
-class SqlMarketPreferenceRepository:
-    def __init__(self, session: AsyncSession, owner_id: uuid.UUID) -> None:
-        self._session = session
-        self._owner_id = owner_id
+class SqlAlchemyMarketPreferenceRepository(
+    SqlAlchemyRepository[MarketPreference, models.MarketPreference, MarketPreferenceFilter]
+):
+    model = models.MarketPreference
+    id_column = models.MarketPreference.id
+    created_column = models.MarketPreference.created_at
+    owner_column: ClassVar[InstrumentedAttribute[uuid.UUID] | None] = (
+        models.MarketPreference.owner_id
+    )
+    noun = "market preference"
 
-    async def all(self) -> list[str]:
-        rows = await self._session.execute(
-            select(models.MarketPreference.market).where(
-                models.MarketPreference.owner_id == self._owner_id
-            )
-        )
-        return sorted(rows.scalars())
+    def to_entity(self, row: models.MarketPreference) -> MarketPreference:
+        return mappers.market_preference(row)
 
-    async def has(self, market: str) -> bool:
-        return await self._row(market) is not None
+    def to_row(self, entity: MarketPreference) -> models.MarketPreference:
+        return mappers.market_preference_row(entity)
 
-    async def add(self, market: str) -> None:
-        self._session.add(models.MarketPreference(owner_id=self._owner_id, market=market))
+    def apply(self, row: models.MarketPreference, entity: MarketPreference) -> None:
+        mappers.apply_market_preference(row, entity)
 
-    async def remove(self, market: str) -> None:
-        row = await self._row(market)
-        if row is not None:
-            await self._session.delete(row)
+    def id_of(self, entity: MarketPreference) -> uuid.UUID:
+        return entity.id
 
-    async def _row(self, market: str) -> models.MarketPreference | None:
-        result = await self._session.execute(
-            select(models.MarketPreference).where(
-                models.MarketPreference.owner_id == self._owner_id,
-                models.MarketPreference.market == market,
-            )
-        )
-        return result.scalar_one_or_none()
+    def conditions(self, filter: MarketPreferenceFilter) -> list[ColumnElement[bool]]:
+        if filter.market is None:
+            return []
+        return [models.MarketPreference.market == filter.market]
 
 
-class SqlPrivatePostingRepository:
-    def __init__(self, session: AsyncSession, owner_id: uuid.UUID) -> None:
-        self._session = session
-        self._owner_id = owner_id
+class SqlAlchemyPrivateJobPostingRepository(
+    SqlAlchemyRepository[PrivateJobPosting, models.PrivateJobPosting, PrivateJobPostingFilter]
+):
+    model = models.PrivateJobPosting
+    id_column = models.PrivateJobPosting.id
+    created_column = models.PrivateJobPosting.created_at
+    owner_column: ClassVar[InstrumentedAttribute[uuid.UUID] | None] = (
+        models.PrivateJobPosting.owner_id
+    )
+    noun = "job description"
 
-    async def all(self) -> list[PrivateJobPosting]:
-        rows = await self._session.execute(
-            select(models.PrivateJobPosting).where(
-                models.PrivateJobPosting.owner_id == self._owner_id
-            )
-        )
-        return [mappers.private_posting(row) for row in rows.scalars()]
+    def to_entity(self, row: models.PrivateJobPosting) -> PrivateJobPosting:
+        return mappers.private_posting(row)
 
-    async def get(self, posting_id: uuid.UUID) -> PrivateJobPosting | None:
-        row = await self._own(posting_id)
-        return mappers.private_posting(row) if row is not None else None
+    def to_row(self, entity: PrivateJobPosting) -> models.PrivateJobPosting:
+        return mappers.private_posting_row(entity)
 
-    async def add(self, posting: PrivateJobPosting) -> None:
-        self._session.add(mappers.private_posting_row(posting))
-        await self._session.flush()
+    def apply(self, row: models.PrivateJobPosting, entity: PrivateJobPosting) -> None:
+        mappers.apply_private_posting(row, entity)
 
-    async def vectors(self) -> dict[uuid.UUID, list[float]]:
-        rows = await self._session.execute(
-            select(models.PrivateJobPosting.id, models.PrivateJobPosting.vector).where(
-                models.PrivateJobPosting.owner_id == self._owner_id,
-                models.PrivateJobPosting.vector.is_not(None),
-            )
-        )
-        return {posting_id: list(vector) for posting_id, vector in rows.all()}
+    def id_of(self, entity: PrivateJobPosting) -> uuid.UUID:
+        return entity.id
 
-    async def set_vector(self, posting_id: uuid.UUID, vector: list[float]) -> None:
-        row = await self._own(posting_id)
-        if row is not None:
-            row.vector = vector
-
-    async def _own(self, posting_id: uuid.UUID) -> models.PrivateJobPosting | None:
-        row = await self._session.get(models.PrivateJobPosting, posting_id)
-        return row if row is not None and row.owner_id == self._owner_id else None
+    def conditions(self, filter: PrivateJobPostingFilter) -> list[ColumnElement[bool]]:
+        vector = models.PrivateJobPosting.vector
+        if filter.has_vector is True:
+            return [vector.is_not(None)]
+        if filter.has_vector is False:
+            return [vector.is_(None)]
+        return []
 
 
-class SqlManualRefreshRepository:
-    def __init__(self, session: AsyncSession, owner_id: uuid.UUID) -> None:
-        self._session = session
-        self._owner_id = owner_id
+class SqlAlchemyManualRefreshRepository(
+    SqlAlchemyRepository[ManualRefresh, models.ManualRefreshLog, ManualRefreshFilter]
+):
+    model = models.ManualRefreshLog
+    id_column = models.ManualRefreshLog.id
+    created_column = models.ManualRefreshLog.requested_at
+    owner_column: ClassVar[InstrumentedAttribute[uuid.UUID] | None] = (
+        models.ManualRefreshLog.owner_id
+    )
+    noun = "manual refresh"
 
-    async def count_since(self, since: datetime) -> int:
-        used = await self._session.execute(
-            select(func.count())
-            .select_from(models.ManualRefreshLog)
-            .where(
-                models.ManualRefreshLog.owner_id == self._owner_id,
-                models.ManualRefreshLog.requested_at >= since,
-            )
-        )
-        return int(used.scalar_one())
+    def to_entity(self, row: models.ManualRefreshLog) -> ManualRefresh:
+        return mappers.manual_refresh(row)
 
-    async def record(self, company_id: uuid.UUID) -> None:
-        self._session.add(models.ManualRefreshLog(owner_id=self._owner_id, company_id=company_id))
+    def to_row(self, entity: ManualRefresh) -> models.ManualRefreshLog:
+        return mappers.manual_refresh_row(entity)
+
+    def apply(self, row: models.ManualRefreshLog, entity: ManualRefresh) -> None:
+        mappers.apply_manual_refresh(row, entity)
+
+    def id_of(self, entity: ManualRefresh) -> uuid.UUID:
+        return entity.id
+
+    def conditions(self, filter: ManualRefreshFilter) -> list[ColumnElement[bool]]:
+        if filter.requested_since is None:
+            return []
+        return [models.ManualRefreshLog.requested_at >= filter.requested_since]

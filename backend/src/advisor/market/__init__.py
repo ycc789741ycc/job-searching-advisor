@@ -13,8 +13,9 @@ from advisor.market import jobs
 from advisor.market.crawling.run import (
     crawl_all,
 )
-from advisor.market.infra.unit_of_work import (
-    SqlMarketUnitOfWork,
+from advisor.market.factory import (
+    create_crawl_ingest,
+    create_market_service,
 )
 from advisor.market.service import (
     BASELINE_SOURCES,
@@ -51,10 +52,11 @@ __all__ = [
     "SalaryRange",
     "SourceKind",
     "SourceOrigin",
-    "SqlMarketUnitOfWork",
     "Visibility",
     "band_from",
     "canonical_key",
     "crawl_all",
+    "create_crawl_ingest",
+    "create_market_service",
     "jobs",
 ]

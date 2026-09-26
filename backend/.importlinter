@@ -404,18 +404,25 @@ source_modules =
 forbidden_modules =
     kernel.ai_gateway
 
-# Rule 12: use cases know no persistence (ADR 0010). They reach stored data only
-# through the repository interfaces their component's domain defines, in domain
-# types; infra implements them. Components join this list as they move over.
-[importlinter:contract:use-cases-know-no-persistence]
-name = Use cases import no ORM, no database package and no infra
+# Rule 12: only persistence code touches the ORM (ADR 0011). A component's
+# domain, use cases and crawling reach stored data through the repository
+# interfaces its domain defines; its infra/ implements them and is the only
+# code that imports the ORM, the vector type or the driver. The factory that
+# wires infra/ in is exempt, as the composition root is. Components join this
+# list as they move over.
+[importlinter:contract:orm-only-in-persistence]
+name = Only a component's infra imports the ORM or the database package
 type = forbidden
 source_modules =
+    advisor.market.domain
     advisor.market.service
     advisor.market.jobs
+    advisor.market.crawling
+    advisor.market.baseline
 forbidden_modules =
     sqlalchemy
     pgvector
+    asyncpg
     kernel.db
     kernel.outbox.models
     kernel.outbox.writer

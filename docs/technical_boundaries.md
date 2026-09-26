@@ -74,9 +74,10 @@ backend/src/
   advisor/                  # the application: one package per component, no framework code
     identity/  profile/  market/  rolemap/  assessment/  target/  gapplan/  resume/
       __init__.py           # the ONLY importable surface: service interface, DTOs, job functions
-      service.py           # use cases: data only through domain/repositories.py (ADR 0010)
+      service.py           # use cases: data only through domain/repositories.py (ADR 0011)
       domain/              # entities, rules, events and repository interfaces; pure Python, no I/O
-      infra/               # ORM models, mappers, SQL repositories + unit of work, external adapters
+      infra/               # ORM models, mappers, SqlAlchemy* repositories + unit of work, adapters
+      factory.py           # create_<c>_service(database, ...): the only place infra is wired in
       jobs.py              # use cases the worker runs
     market/crawling/       # board adapters, discovery, politeness, one crawl run
 web/                        # TS client
@@ -99,7 +100,7 @@ web/                        # TS client
 8. Components never call an LLM SDK directly; they go through `kernel.ai_gateway`.
 9. `kernel/` imports no component, deployable or composition root.
 10. `advisor.profile` never imports `kernel.ai_gateway`, directly or indirectly. Ingestion is deterministic (domain decision 18), so a sync can never spend the user's key and the most hostile input never reaches a prompt from there.
-11. A component's use cases (`service`, `jobs`) reach stored data only through the repository interfaces its `domain/` defines, in domain types — never `sqlalchemy`, `kernel.db`, the outbox writer or their own `infra/` ([ADR 0010](decisions/0010-define-repositories-in-the-domain-in-domain-types.md)). Enforced for the components moved so far: `market`.
+11. Only a component's `infra/` (and the factory that wires it) imports the ORM, `kernel.db` or the outbox writer. Its domain, use cases and other modules reach stored data through repository interfaces its `domain/` defines — six methods (`create`, `get`, `get_list`, `get_count`, `update`, `delete`) and one filter per aggregate, in domain types ([ADR 0011](decisions/0011-give-every-repository-the-same-six-methods.md)). Enforced for the components moved so far: `market`.
 
 ### Communication
 - **Queries** are synchronous in-process calls through a component's `__init__.py`. For example, `resume` asks `assessment` for the current RoleFit.

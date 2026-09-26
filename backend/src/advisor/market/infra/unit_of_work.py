@@ -22,14 +22,14 @@ from advisor.market.domain import (
     SubscriptionAdded,
 )
 from advisor.market.infra.repositories import (
-    SqlCompanyRepository,
-    SqlCrawlSourceRepository,
-    SqlJobPostingRepository,
-    SqlManualRefreshRepository,
-    SqlMarketPreferenceRepository,
-    SqlPrivatePostingRepository,
-    SqlSubscriptionRepository,
-    SqlWatchers,
+    SqlAlchemyCompanyRepository,
+    SqlAlchemyCrawlSourceRepository,
+    SqlAlchemyJobPostingRepository,
+    SqlAlchemyManualRefreshRepository,
+    SqlAlchemyMarketPreferenceRepository,
+    SqlAlchemyPostingEmbeddingRepository,
+    SqlAlchemyPrivateJobPostingRepository,
+    SqlAlchemySubscriptionRepository,
 )
 from kernel.db import Database
 from kernel.outbox import EventName, emit
@@ -49,45 +49,55 @@ class _Events:
         self.pending.clear()
 
 
-class SqlSharedMarket(_Events):
+class SqlAlchemySharedMarket(_Events):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__()
-        self.companies = SqlCompanyRepository(session)
-        self.sources = SqlCrawlSourceRepository(session)
-        self.postings = SqlJobPostingRepository(session)
+        self.companies = SqlAlchemyCompanyRepository(session)
+        self.sources = SqlAlchemyCrawlSourceRepository(session)
+        self.postings = SqlAlchemyJobPostingRepository(session)
+        self.embeddings = SqlAlchemyPostingEmbeddingRepository(session)
 
 
-class SqlOwnerMarket(_Events):
+class SqlAlchemyOwnerMarket(_Events):
     def __init__(self, session: AsyncSession, owner_id: uuid.UUID) -> None:
         super().__init__()
-        self.subscriptions = SqlSubscriptionRepository(session, owner_id)
-        self.markets = SqlMarketPreferenceRepository(session, owner_id)
-        self.private_postings = SqlPrivatePostingRepository(session, owner_id)
-        self.refreshes = SqlManualRefreshRepository(session, owner_id)
+        self.subscriptions = SqlAlchemySubscriptionRepository(session, owner_id=owner_id)
+        self.markets = SqlAlchemyMarketPreferenceRepository(session, owner_id=owner_id)
+        self.private_postings = SqlAlchemyPrivateJobPostingRepository(session, owner_id=owner_id)
+        self.refreshes = SqlAlchemyManualRefreshRepository(session, owner_id=owner_id)
 
 
-class SqlMarketUnitOfWork:
+class SqlAlchemyFanoutMarket:
+    """Not bound to an owner: the fan-out policy lets this scope read every
+    user's subscriptions and market choices, and write nothing."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.subscriptions = SqlAlchemySubscriptionRepository(session)
+        self.markets = SqlAlchemyMarketPreferenceRepository(session)
+
+
+class SqlAlchemyMarketUnitOfWork:
     def __init__(self, database: Database) -> None:
         self._db = database
 
     @asynccontextmanager
-    async def for_owner(self, owner_id: uuid.UUID) -> AsyncIterator[SqlOwnerMarket]:
+    async def for_owner(self, owner_id: uuid.UUID) -> AsyncIterator[SqlAlchemyOwnerMarket]:
         async with self._db.for_user(owner_id) as session:
-            scope = SqlOwnerMarket(session, owner_id)
+            scope = SqlAlchemyOwnerMarket(session, owner_id)
             yield scope
             await scope.flush(session)
 
     @asynccontextmanager
-    async def shared(self) -> AsyncIterator[SqlSharedMarket]:
+    async def shared(self) -> AsyncIterator[SqlAlchemySharedMarket]:
         async with self._db.shared() as session:
-            scope = SqlSharedMarket(session)
+            scope = SqlAlchemySharedMarket(session)
             yield scope
             await scope.flush(session)
 
     @asynccontextmanager
-    async def fanout(self) -> AsyncIterator[SqlWatchers]:
+    async def fanout(self) -> AsyncIterator[SqlAlchemyFanoutMarket]:
         async with self._db.fanout() as session:
-            yield SqlWatchers(session)
+            yield SqlAlchemyFanoutMarket(session)
 
 
 def _outbox_entry(event: MarketEvent) -> tuple[EventName, dict[str, Any], uuid.UUID | None]:

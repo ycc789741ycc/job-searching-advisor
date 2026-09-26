@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -176,11 +176,14 @@ async def test_manual_refreshes_stop_at_the_daily_cap() -> None:
 def _source(
     uow: FakeMarketUnitOfWork, *, origin: SourceOrigin = SourceOrigin.DEMAND
 ) -> CrawlSource:
+    seeded_at = datetime(2026, 1, 1, tzinfo=UTC)
     company = Company.named("Acme")
+    company.created_at = seeded_at
     uow.store.companies[company.id] = company
     source = CrawlSource.board(
         kind="greenhouse", endpoint="https://boards.test/acme", company_id=company.id, origin=origin
     )
+    source.created_at = seeded_at
     uow.store.sources[source.id] = source
     return source
 

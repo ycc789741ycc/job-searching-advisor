@@ -8,6 +8,9 @@ from advisor.market.domain import (
     Coverage,
     CrawlSource,
     JobPosting,
+    ManualRefresh,
+    MarketPreference,
+    PostingEmbedding,
     PostingStatus,
     PrivateJobPosting,
     SalaryRange,
@@ -20,11 +23,24 @@ from advisor.market.infra import models
 
 
 def company(row: models.Company) -> Company:
-    return Company(id=row.id, name=row.name, normalized_name=row.normalized_name)
+    return Company(
+        id=row.id,
+        name=row.name,
+        normalized_name=row.normalized_name,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
 
 
 def company_row(entity: Company) -> models.Company:
-    return models.Company(id=entity.id, name=entity.name, normalized_name=entity.normalized_name)
+    row = models.Company(id=entity.id)
+    apply_company(row, entity)
+    return row
+
+
+def apply_company(row: models.Company, entity: Company) -> None:
+    row.name = entity.name
+    row.normalized_name = entity.normalized_name
 
 
 # --- crawl source ----------------------------------------------------------
@@ -41,6 +57,8 @@ def crawl_source(row: models.CrawlSource) -> CrawlSource:
         status=SourceStatus(row.status),
         last_fetched_at=row.last_fetched_at,
         last_error=row.last_error,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )
 
 
@@ -90,6 +108,8 @@ def job_posting(row: models.JobPosting) -> JobPosting:
         status=PostingStatus(row.status),
         first_seen_at=row.first_seen_at,
         last_seen_at=row.last_seen_at,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )
 
 
@@ -131,6 +151,8 @@ def subscription(row: models.CompanySubscription) -> CompanySubscription:
         url=row.url,
         coverage=Coverage(row.coverage),
         last_refreshed_at=row.last_refreshed_at,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )
 
 
@@ -162,19 +184,83 @@ def private_posting(row: models.PrivateJobPosting) -> PrivateJobPosting:
         url=row.url,
         shared_posting_id=row.shared_posting_id,
         vector=list(row.vector) if row.vector is not None else None,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )
 
 
 def private_posting_row(entity: PrivateJobPosting) -> models.PrivateJobPosting:
-    return models.PrivateJobPosting(
-        id=entity.id,
-        owner_id=entity.owner_id,
-        canonical_key=entity.canonical_key,
-        company_name=entity.company_name,
-        title=entity.title,
-        location=entity.location,
-        description=entity.description,
-        url=entity.url,
-        shared_posting_id=entity.shared_posting_id,
-        vector=entity.vector,
+    row = models.PrivateJobPosting(id=entity.id, owner_id=entity.owner_id)
+    apply_private_posting(row, entity)
+    return row
+
+
+def apply_private_posting(row: models.PrivateJobPosting, entity: PrivateJobPosting) -> None:
+    row.canonical_key = entity.canonical_key
+    row.company_name = entity.company_name
+    row.title = entity.title
+    row.location = entity.location
+    row.description = entity.description
+    row.url = entity.url
+    row.shared_posting_id = entity.shared_posting_id
+    row.vector = entity.vector
+
+
+def market_preference(row: models.MarketPreference) -> MarketPreference:
+    return MarketPreference(
+        id=row.id,
+        owner_id=row.owner_id,
+        market=row.market,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )
+
+
+def market_preference_row(entity: MarketPreference) -> models.MarketPreference:
+    return models.MarketPreference(id=entity.id, owner_id=entity.owner_id, market=entity.market)
+
+
+def apply_market_preference(row: models.MarketPreference, entity: MarketPreference) -> None:
+    row.market = entity.market
+
+
+def manual_refresh(row: models.ManualRefreshLog) -> ManualRefresh:
+    return ManualRefresh(
+        id=row.id,
+        owner_id=row.owner_id,
+        company_id=row.company_id,
+        requested_at=row.requested_at,
+    )
+
+
+def manual_refresh_row(entity: ManualRefresh) -> models.ManualRefreshLog:
+    return models.ManualRefreshLog(
+        id=entity.id, owner_id=entity.owner_id, company_id=entity.company_id
+    )
+
+
+def apply_manual_refresh(row: models.ManualRefreshLog, entity: ManualRefresh) -> None:
+    row.company_id = entity.company_id
+
+
+# --- shared zone, embeddings -----------------------------------------------
+
+
+def posting_embedding(row: models.PostingEmbedding) -> PostingEmbedding:
+    return PostingEmbedding(
+        posting_id=row.job_posting_id,
+        model_name=row.model_name,
+        vector=list(row.vector),
+        computed_at=row.computed_at,
+    )
+
+
+def posting_embedding_row(entity: PostingEmbedding) -> models.PostingEmbedding:
+    return models.PostingEmbedding(
+        job_posting_id=entity.posting_id, model_name=entity.model_name, vector=entity.vector
+    )
+
+
+def apply_posting_embedding(row: models.PostingEmbedding, entity: PostingEmbedding) -> None:
+    row.model_name = entity.model_name
+    row.vector = entity.vector

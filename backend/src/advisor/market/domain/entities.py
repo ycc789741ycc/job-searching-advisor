@@ -17,6 +17,7 @@ from advisor.market.domain.posting import (
     PostingStatus,
     SalaryRange,
     SourceOrigin,
+    canonical_key,
     normalize,
 )
 
@@ -37,6 +38,8 @@ class Company:
     name: str
     # The dedup key: two spellings of one employer are one company.
     normalized_name: str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     @classmethod
     def named(cls, name: str) -> Company:
@@ -54,6 +57,8 @@ class CrawlSource:
     status: SourceStatus
     last_fetched_at: datetime | None = None
     last_error: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     @classmethod
     def board(
@@ -87,14 +92,6 @@ class CrawlSource:
         return True
 
 
-@dataclass(frozen=True, slots=True)
-class DueSource:
-    """A source to crawl now, with the name of the company it belongs to."""
-
-    source: CrawlSource
-    company_name: str | None
-
-
 @dataclass(slots=True)
 class JobPosting:
     """A crawled opening, shared by every user whose scope reaches it."""
@@ -113,6 +110,8 @@ class JobPosting:
     status: PostingStatus
     first_seen_at: datetime
     last_seen_at: datetime
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     @classmethod
     def first_seen(
@@ -156,6 +155,16 @@ class JobPosting:
             self.salary = posting.salary
 
 
+@dataclass(slots=True)
+class PostingEmbedding:
+    """A posting's local embedding, one per posting. Platform-paid computation."""
+
+    posting_id: uuid.UUID
+    model_name: str
+    vector: list[float]
+    computed_at: datetime | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class PostingScope:
     """Which shared postings a user's role map is built from (domain decision 15).
@@ -191,6 +200,8 @@ class CompanySubscription:
     # Coverage belongs to the company's board, not to one role there.
     coverage: Coverage
     last_refreshed_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     @classmethod
     def new(
@@ -236,6 +247,61 @@ class PrivateJobPosting:
     # flows back the other way.
     shared_posting_id: uuid.UUID | None
     vector: list[float] | None = field(default=None)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @classmethod
+    def pasted(
+        cls,
+        *,
+        owner_id: uuid.UUID,
+        company_name: str,
+        title: str,
+        location: str | None,
+        description: str,
+        url: str | None,
+        shared_posting_id: uuid.UUID | None,
+    ) -> PrivateJobPosting:
+        return cls(
+            id=uuid.uuid4(),
+            owner_id=owner_id,
+            canonical_key=canonical_key(company=company_name, title=title, location=location),
+            company_name=company_name.strip(),
+            title=title.strip(),
+            location=location,
+            description=description,
+            url=url,
+            shared_posting_id=shared_posting_id,
+        )
+
+
+@dataclass(slots=True)
+class MarketPreference:
+    """A market the user chose to be measured against."""
+
+    id: uuid.UUID
+    owner_id: uuid.UUID
+    market: str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @classmethod
+    def chosen(cls, *, owner_id: uuid.UUID, market: str) -> MarketPreference:
+        return cls(id=uuid.uuid4(), owner_id=owner_id, market=market)
+
+
+@dataclass(slots=True)
+class ManualRefresh:
+    """One manual re-crawl a user asked for; counted against a daily cap."""
+
+    id: uuid.UUID
+    owner_id: uuid.UUID
+    company_id: uuid.UUID
+    requested_at: datetime | None = None
+
+    @classmethod
+    def requested(cls, *, owner_id: uuid.UUID, company_id: uuid.UUID) -> ManualRefresh:
+        return cls(id=uuid.uuid4(), owner_id=owner_id, company_id=company_id)
 
 
 def refresh_allowed(*, used_today: int, per_day: int) -> bool:

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import DateTime, MetaData, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
 
 # Kept importable from here for existing callers; new code takes it from kernel.clock.
 from kernel.clock import utcnow as utcnow
@@ -24,6 +25,13 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+    # Server-set columns (created_at, updated_at) come back with the INSERT or
+    # UPDATE itself, through RETURNING. A repository maps a row to its entity
+    # right after flushing it, and under asyncio a lazy reload there would fail.
+    @declared_attr.directive
+    def __mapper_args__(cls) -> dict[str, Any]:  # noqa: N805 - declared_attr takes the class
+        return {"eager_defaults": True}
 
 
 def new_id() -> uuid.UUID:
