@@ -229,7 +229,7 @@ format: require-env
 # on stdin, so it runs from the test images and works in CI.
 gen-client: require-env
 	$(RUN_HERMETIC) --env-file $(ENV_FILE) $(BACKEND_TEST_IMAGE) \
-	    python -m app.export_openapi > web/openapi.json
+	    python -m cli.export_openapi > web/openapi.json
 	$(RUN_HERMETIC) -i $(WEB_TEST_IMAGE) sh -c \
 	    'cat > /tmp/openapi.json && npx openapi-typescript /tmp/openapi.json -o /tmp/schema.d.ts >&2 && cat /tmp/schema.d.ts' \
 	    < web/openapi.json > web/src/api/schema.d.ts.tmp \

@@ -109,7 +109,7 @@ async def other_account(database: Database) -> AsyncIterator[uuid.UUID]:
 
 
 async def _purge(database: Database, account_id: uuid.UUID) -> None:
-    from app.models import OWNER_ZONE_TABLES
+    from wiring.models import OWNER_ZONE_TABLES
 
     async with database.for_user(account_id) as session:
         for table in OWNER_ZONE_TABLES:

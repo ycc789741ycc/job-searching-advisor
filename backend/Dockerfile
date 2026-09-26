@@ -48,8 +48,11 @@ RUN apt-get update \
       fonts-dejavu-core=2.37-6 \
  && rm -rf /var/lib/apt/lists/*
 
+# Source lives under src/ (package by component, docs/decisions/0009); every
+# entrypoint, gate and test imports from there.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app/src \
     PATH="/opt/venv/bin:$PATH" \
     VIRTUAL_ENV=/opt/venv \
     # sentence-transformers caches models here; the volume is mounted for it.

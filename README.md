@@ -129,16 +129,19 @@ only destructive one.
 
 ```
 backend/
-  app/        composition root: FastAPI app, worker and crawler entrypoints
-  kernel/     technical kernel with no domain logic: db, outbox, jobs, auth, crypto,
+  src/
+    api/      FastAPI app and one router per component
+    worker/   queue worker and outbox dispatcher
+    crawler/  its own deployable: the crawl loop, no secrets
+    cli/      migrate, seed, OpenAPI export
+    wiring/   composition root shared by every deployable
+    kernel/   technical kernel with no domain logic: db, outbox, jobs, auth, crypto,
               storage, ai_gateway, fetch, embeddings
-  domain/     pure domain rules, one package per feature, with no I/O and no framework
-  modules/    identity · profile · market · rolemap · assessment · target · gapplan · resume
-                public.py  the only importable surface · api.py  routers
-                infra/     repositories and adapters · jobs.py  worker handlers
-  crawler/    its own deployable, which parses hostile HTML
+    advisor/  identity · profile · market · rolemap · assessment · target · gapplan · resume
+                __init__.py  the only importable surface; submodules are private
+                service.py use cases · domain/ pure rules · infra/ models and adapters
   migrations/ Alembic
-  tests/
+  tests/      unit/ and integration/, each mirroring src/
 web/          React + Vite SPA on the prototype's design system (ADR 0004)
 infra/        infra compose project, DB role bootstrap, health wait
 prototype/    the original clickable prototype

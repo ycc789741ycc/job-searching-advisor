@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from alembic import op
 
-from app.models import OWNER_ZONE_TABLES, SCHEMAS, SHARED_MARKET_TABLES, metadata
+from wiring.models import OWNER_ZONE_TABLES, SCHEMAS, SHARED_MARKET_TABLES, metadata
 
 revision: str = "0001_baseline"
 down_revision: str | None = None

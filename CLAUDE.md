@@ -133,30 +133,37 @@ variables.
 ## Shape of the code
 
 ```
-backend/
-  app/        composition root: FastAPI app, worker and crawler entrypoints, queue wiring
-  kernel/     technical kernel, no domain: db, outbox, jobs, auth, crypto, storage,
-              ai_gateway, fetch, embeddings
-  domain/     the domain model, one package per feature: identity · profile · market ·
-              rolemap · assessment · target · gapplan · resume. Pure rules, no
-              I/O, no framework, no kernel.
-  modules/    identity · profile · market · rolemap · assessment · target ·
-              gapplan · resume
-                public.py   the ONLY importable surface
-                api.py      FastAPI routers
-                infra/      repositories and adapters
-                jobs.py     worker handlers
-  crawler/    its own deployable: hostile HTML, no secrets, no user data
+backend/src/
+  api/        FastAPI: main.py, dependencies, error envelope, routes/<component>.py
+  worker/     queue worker entrypoint and the outbox dispatcher
+  crawler/    its own deployable: the crawl loop only — no secrets, no user data
+  cli/        migrate, job-queue schema, baseline seed, OpenAPI export
+  wiring/     composition root shared by every deployable: container, crawl (the
+              crawler's own narrow wiring), queue (task registration), models
+  kernel/     technical kernel, no domain: db, outbox, jobs, auth, crypto,
+              storage, ai_gateway, fetch, embeddings
+  advisor/    the application, one component per capability: identity · profile ·
+              market · rolemap · assessment · target · gapplan · resume
+                __init__.py  the component's ONLY importable surface
+                service.py  use cases
+                domain/     pure rules: no I/O, no framework, no kernel
+                infra/      ORM models, repositories and adapters
+                jobs.py     use cases the worker runs
+              market/crawling/  board adapters, discovery, politeness, one crawl run
+backend/tests/{unit,integration}/   each mirrors src/
 web/          React + Vite SPA, on the prototype's Organic design system (ADR 0004)
 ```
 
-The domain model sits in one top-level `domain/` folder rather than inside each
-module, as the design guideline requires (its ADR 0002). `modules/<m>` uses only
-`domain/<m>`; another module's rules are reached through that module's
-`public.py`. Domain feature packages never import each other.
+The backend is packaged by component, as the design guideline requires (its ADR
+0003; ours is ADR 0009). A component owns its domain model, use cases and data
+access. Its `__init__.py` is its public API and its submodules are private: other components,
+routes and the composition root use only its `__init__.py`. Routes, task
+registration and entrypoints never live inside `advisor/`. `kernel/` stays
+outside the application on purpose (ADR 0009).
 
-Sixteen `import-linter` contracts in `backend/.importlinter` enforce those boundaries, and
-they run in CI. If one breaks, the design is wrong, not the contract.
+Eighteen `import-linter` contracts in `backend/.importlinter` enforce those
+boundaries, and they run in CI. If one breaks, the design is wrong, not the
+contract.
 
 ## Things that are deliberate
 

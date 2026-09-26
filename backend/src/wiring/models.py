@@ -1,0 +1,63 @@
+"""Imports every ORM model so ``Base.metadata`` is complete.
+
+Alembic and the integration-test harness both need one place that knows about
+all of them. Nothing else should import this.
+"""
+
+from __future__ import annotations
+
+# Importing a component registers its ORM models on Base.metadata. The models
+# stay private to their component; this module never names one.
+import advisor.assessment
+import advisor.gapplan
+import advisor.identity
+import advisor.market
+import advisor.profile
+import advisor.resume
+import advisor.rolemap  # noqa: F401
+from kernel.db.base import Base
+from kernel.outbox.models import OutboxEvent  # noqa: F401
+
+# Schemas, in the order they are created.
+SCHEMAS = (
+    "identity",
+    "profile",
+    "market",
+    "market_user",
+    "rolemap",
+    "assessment",
+    "gapplan",
+    "resume",
+    "outbox",
+)
+
+# Every table with an owner_id, covered by row-level security.
+#
+# `outbox` is excluded on purpose. Its `owner_id` is a routing hint, not a
+# tenancy boundary: the crawler writes rows with no owner at all (it must not
+# know which users a market change affects), and the dispatcher has to read
+# every row to fan them out. Tenancy there is enforced by the grants instead —
+# the crawler role may only INSERT and SELECT on it.
+OWNER_ZONE_TABLES = tuple(
+    name
+    for name, table in sorted(Base.metadata.tables.items())
+    if "owner_id" in table.columns and not name.startswith("outbox.")
+)
+
+# Shared zone: no owner_id, reachable by the crawler role.
+SHARED_MARKET_TABLES = (
+    "market.company",
+    "market.crawl_source",
+    "market.job_posting",
+    "market.posting_embedding",
+)
+
+# A component whose models stopped loading would otherwise vanish from
+# migrations and from the RLS checks without a word.
+_unregistered = set(SCHEMAS) - {table.schema for table in Base.metadata.tables.values()}
+if _unregistered:
+    raise RuntimeError(f"no ORM models registered for schemas: {sorted(_unregistered)}")
+
+metadata = Base.metadata
+
+__all__ = ["OWNER_ZONE_TABLES", "SCHEMAS", "SHARED_MARKET_TABLES", "Base", "metadata"]
