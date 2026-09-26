@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import date
 
 import pytest
@@ -18,7 +19,15 @@ from advisor.profile.domain import (
 
 def test_evidence_confidence_must_be_a_probability() -> None:
     with pytest.raises(ValueError, match="between 0 and 1"):
-        Evidence("e1", EvidenceSource.GITHUB, "repo", "fact", date(2026, 1, 1), 1.4)
+        Evidence.cited(
+            owner_id=uuid.uuid4(),
+            source=EvidenceSource.GITHUB,
+            external_ref="repo",
+            reference="repo",
+            fact="fact",
+            observed_on=date(2026, 1, 1),
+            confidence=1.4,
+        )
 
 
 def test_citing_owned_evidence_is_accepted() -> None:

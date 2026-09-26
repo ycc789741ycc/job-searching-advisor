@@ -23,7 +23,7 @@ from advisor.market import (
     create_market_service,
 )
 from advisor.market.infra.models import CrawlSource
-from advisor.profile import ProfileService
+from advisor.profile import create_profile_service
 from advisor.rolemap import RoleMapService
 from advisor.rolemap.infra.models import Role, RoleMember
 from kernel.ai_gateway import AiGateway
@@ -146,7 +146,7 @@ async def test_top_matched_lists_open_postings_in_live_roles_by_role_fit(
         )
 
         identity = IdentityService(database, default_monthly_cap_usd=Decimal("20"))
-        profile = ProfileService(
+        profile = create_profile_service(
             database,
             object_store=ObjectStore(settings),
             connectors={},

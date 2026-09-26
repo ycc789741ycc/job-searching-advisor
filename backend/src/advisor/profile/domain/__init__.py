@@ -1,16 +1,62 @@
+from advisor.profile.domain.entities import (
+    CareerPosition,
+    ConnectionStatus,
+    ProfileVersion,
+    ResumeFile,
+    ResumeStatus,
+    SourceConnection,
+)
+from advisor.profile.domain.events import ProfileEvent, ProfileUpdated, SourceSynced
 from advisor.profile.domain.evidence import (
     CitationError,
     Evidence,
     EvidenceSource,
     assert_citations_exist,
 )
+from advisor.profile.domain.repositories import (
+    CareerPositionFilter,
+    CareerPositionRepository,
+    EvidenceFilter,
+    EvidenceRepository,
+    OwnerProfile,
+    ProfileUnitOfWork,
+    ProfileVersionFilter,
+    ProfileVersionRepository,
+    Repository,
+    ResumeFileFilter,
+    ResumeFileRepository,
+    SourceConnectionFilter,
+    SourceConnectionRepository,
+)
 from advisor.profile.domain.timeline import Position, total_experience_months
 
 __all__ = [
+    "CareerPosition",
+    "CareerPositionFilter",
+    "CareerPositionRepository",
     "CitationError",
+    "ConnectionStatus",
     "Evidence",
+    "EvidenceFilter",
+    "EvidenceRepository",
     "EvidenceSource",
+    "OwnerProfile",
     "Position",
+    "ProfileEvent",
+    "ProfileUnitOfWork",
+    "ProfileUpdated",
+    "ProfileVersion",
+    "ProfileVersionFilter",
+    "ProfileVersionRepository",
+    "Repository",
+    "ResumeFile",
+    "ResumeFileFilter",
+    "ResumeFileRepository",
+    "ResumeStatus",
+    "SourceConnection",
+    "SourceConnectionFilter",
+    "SourceConnectionRepository",
+    "SourceSynced",
     "assert_citations_exist",
     "total_experience_months",
 ]

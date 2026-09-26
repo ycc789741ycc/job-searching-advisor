@@ -22,7 +22,7 @@ from advisor.assessment import AssessmentService
 from advisor.gapplan import GapPlanService, PlanStatus
 from advisor.identity import IdentityService
 from advisor.market import MarketService, create_market_service
-from advisor.profile import ProfileService
+from advisor.profile import create_profile_service
 from advisor.rolemap import RoleMapService
 from advisor.target import TargetKind, TargetRef, TargetService
 from kernel.ai_gateway import AiGateway
@@ -84,7 +84,7 @@ async def world(
     await identity.set_credential(
         account, provider="anthropic", model="claude-opus-5", api_key="sk-test", base_url=None
     )
-    profile = ProfileService(
+    profile = create_profile_service(
         database,
         object_store=ObjectStore(settings),
         connectors={},

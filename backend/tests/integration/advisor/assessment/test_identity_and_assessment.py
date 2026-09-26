@@ -14,7 +14,7 @@ import pytest
 from sqlalchemy import text
 
 from advisor.identity import IdentityService
-from advisor.profile import ProfileService
+from advisor.profile import ProfileService, create_profile_service
 from advisor.rolemap import RoleMapService
 from advisor.rolemap.domain import DEFAULT_ROLE_COUNT
 from kernel.ai_gateway import AiGateway
@@ -217,7 +217,7 @@ async def test_a_call_past_the_cap_pauses_the_user_instead_of_running(
 def profile(database: Database, settings: Settings) -> ProfileService:
     from kernel.storage import ObjectStore
 
-    return ProfileService(
+    return create_profile_service(
         database,
         object_store=ObjectStore(settings),
         connectors={},

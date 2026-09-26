@@ -10,6 +10,7 @@ import only what is listed here (import-linter contract
 """
 
 from advisor.profile import jobs
+from advisor.profile.factory import create_profile_service
 from advisor.profile.infra.connectors import (
     GitHubConnector,
     JiraConnector,
@@ -53,6 +54,7 @@ __all__ = [
     "ResumeFileView",
     "assert_citations_exist",
     "authorize_url",
+    "create_profile_service",
     "exchange_code",
     "jobs",
     "sign_state",
