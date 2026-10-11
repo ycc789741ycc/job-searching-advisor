@@ -1,12 +1,20 @@
-import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { AppIcon } from "../components/AppIcon";
 import { PRIVACY_PATH } from "../features/PrivacyPolicy";
 import { Button, ErrorNote, Field } from "../components/ui";
 import { useAuth } from "./AuthProvider";
-import { googleStartUrl, signInMethods } from "./session";
+import { googleStartUrl, signInMethods, type SignInMethods } from "./session";
+import { SignInIllustration } from "./SignInIllustration";
 import { readSignInError, withoutSignInError } from "./signInError";
 
 const MIN_PASSWORD_LENGTH = 12;
+
+/** Until the server says otherwise: a password, and nothing else. */
+const NO_OUTSIDE_METHODS: SignInMethods = {
+  password: true,
+  google: false,
+  platform_ai: false,
+};
 
 /** Sign in or create an account. One form, two modes. */
 export function SignInScreen() {
@@ -20,7 +28,7 @@ export function SignInScreen() {
   const [error, setError] = useState<string | null>(() =>
     readSignInError(window.location.search),
   );
-  const [googleOffered, setGoogleOffered] = useState(false);
+  const [methods, setMethods] = useState<SignInMethods>(NO_OUTSIDE_METHODS);
 
   const registering = mode === "register";
 
@@ -38,8 +46,8 @@ export function SignInScreen() {
   useEffect(() => {
     let cancelled = false;
     signInMethods()
-      .then((methods) => !cancelled && setGoogleOffered(methods.google))
-      .catch(() => !cancelled && setGoogleOffered(false));
+      .then((offered) => !cancelled && setMethods(offered))
+      .catch(() => !cancelled && setMethods(NO_OUTSIDE_METHODS));
     return () => {
       cancelled = true;
     };
@@ -61,190 +69,116 @@ export function SignInScreen() {
   }
 
   return (
-    <div
-      className="auto-grid"
-      style={
-        {
-          "--col": "360px",
-          "--gap": "20px",
-          minHeight: "100vh",
-          alignItems: "center",
-        } as CSSProperties
-      }
-    >
-      <div style={{ padding: "56px 48px", maxWidth: 580 }}>
-        <div
-          className="brand"
-          style={{ padding: 0, marginBottom: 36, fontSize: 20 }}
-        >
-          <AppIcon size={32} />
-          CareerPolaris
-        </div>
-        <h1 style={{ fontSize: 44, lineHeight: 1.08, marginBottom: 16 }}>
-          Your next role, read from the work you already did.
-        </h1>
-        <p className="lead" style={{ fontSize: 17, maxWidth: "46ch" }}>
-          Connect GitHub and Jira. We read what you actually shipped, score it
-          against real market bars, and plan the distance to the role you pick.
-        </p>
-
-        <form
-          onSubmit={submit}
-          style={{ display: "grid", gap: 4, maxWidth: 430, marginTop: 30 }}
-        >
-          <h2 style={{ fontSize: 21, margin: "0 0 10px" }}>
-            {registering ? "Create an account" : "Sign in"}
-          </h2>
-
-          <Field label="Email">
-            <input
-              className="input"
-              type="email"
-              value={email}
-              autoComplete="email"
-              placeholder="you@work.com"
-              required
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </Field>
-
-          <Field
-            label="Password"
-            {...(registering
-              ? {
-                  hint: `At least ${MIN_PASSWORD_LENGTH} characters. A memorable phrase beats a short, punctuated one.`,
-                }
-              : {})}
-          >
-            <input
-              className="input"
-              type="password"
-              value={password}
-              autoComplete={registering ? "new-password" : "current-password"}
-              required
-              minLength={registering ? MIN_PASSWORD_LENGTH : 1}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </Field>
-
-          <ErrorNote error={error} />
-
-          <div className="row">
-            <Button type="submit" busy={busy} disabled={!email || !password}>
-              {registering ? "Create account" : "Sign in"}
-            </Button>
-            <span className="subcopy" style={{ fontSize: 13.5 }}>
-              {registering ? "Already have an account?" : "No account yet?"}
-            </span>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setMode(registering ? "sign-in" : "register");
-                setError(null);
-              }}
-            >
-              {registering ? "Sign in instead" : "Create one"}
-            </Button>
-          </div>
-
-          {googleOffered && (
-            <div style={{ marginTop: 14 }}>
-              <div
-                className="muted"
-                style={{ fontSize: 12.5, margin: "0 0 8px" }}
-                aria-hidden="true"
-              >
-                or
-              </div>
-              {/* A link, not a fetch: the browser itself goes to Google. */}
-              <a className="btn btn-secondary" href={googleStartUrl()}>
-                Continue with Google
-              </a>
-            </div>
-          )}
-
-          {/* Said plainly rather than discovered later. */}
-          <p
-            className="muted"
-            style={{ fontSize: 12.5, lineHeight: 1.5, marginTop: 10 }}
-          >
-            You bring your own AI provider and key after signing in — nothing is
-            analysed until you do. There is no password reset yet, and your
-            address is not verified. Keep your password somewhere safe.
-            {googleOffered &&
-              " Signing in with Google proves your address: an account with the same address is linked to Google, and any password on it stops working."}{" "}
-            <a href={PRIVACY_PATH}>Privacy policy</a>
-          </p>
-        </form>
+    <div className="sign-in">
+      <div className="brand sign-in-brand">
+        <AppIcon size={32} />
+        CareerPolaris
       </div>
 
-      <div style={{ padding: 40, display: "flex", justifyContent: "center" }}>
-        <div
-          className="panel"
-          style={{
-            width: "100%",
-            maxWidth: 420,
-            boxShadow: "var(--shadow-md)",
-          }}
-        >
-          <div className="row" style={{ gap: 8, marginBottom: 12 }}>
-            <span className="tag tag-accent">Skill radar</span>
-            <span className="tag tag-accent-2">Salary bubbles</span>
-            <span className="tag tag-outline">Gap plan</span>
-          </div>
-          <div className="divided">
-            {PITCH.map((point, index) => (
-              <div key={point.title} style={{ display: "flex", gap: 14 }}>
-                <div
-                  aria-hidden="true"
-                  style={{
-                    width: 34,
-                    height: 34,
-                    flex: "0 0 auto",
-                    borderRadius: 999,
-                    background: "var(--color-accent-2-200)",
-                    color: "var(--color-accent-2-800)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontFamily: "var(--font-heading)",
-                    fontSize: 14,
-                  }}
+      <div className="sign-in-pitch">
+        <SignInIllustration />
+        <div>
+          <h1 className="sign-in-headline">
+            Know your strengths. Find your next role. Tailor your résumé to it.
+          </h1>
+          <p className="lead sign-in-lead">
+            CareerPolaris reads your evidence from GitHub, Jira and your past
+            résumé, then backs every strength, role match and résumé line with
+            it.
+          </p>
+        </div>
+      </div>
+
+      <div className="sign-in-aside">
+        <div className="sign-in-card">
+          <form onSubmit={submit} style={{ display: "grid", gap: 4 }}>
+            <h2 className="sign-in-heading">
+              {registering ? "Create your account" : "Welcome back"}
+            </h2>
+
+            {methods.google && (
+              <>
+                {/* A link, not a fetch: the browser itself goes to Google. */}
+                <a
+                  className="btn btn-secondary sign-in-google"
+                  href={googleStartUrl()}
                 >
-                  {index + 1}
-                </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>
-                    {point.title}
-                  </div>
-                  <div className="subcopy" style={{ fontSize: 13.5 }}>
-                    {point.note}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+                  Continue with Google
+                </a>
+                <div className="sign-in-divider">or with email</div>
+              </>
+            )}
+
+            <Field label="Email">
+              <input
+                className="input"
+                type="email"
+                value={email}
+                autoComplete="email"
+                placeholder="you@work.com"
+                required
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </Field>
+
+            <Field
+              label="Password"
+              {...(registering
+                ? {
+                    hint: `At least ${MIN_PASSWORD_LENGTH} characters. A memorable phrase beats a short, punctuated one.`,
+                  }
+                : {})}
+            >
+              <input
+                className="input"
+                type="password"
+                value={password}
+                autoComplete={registering ? "new-password" : "current-password"}
+                required
+                minLength={registering ? MIN_PASSWORD_LENGTH : 1}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </Field>
+
+            <ErrorNote error={error} />
+
+            <Button
+              type="submit"
+              busy={busy}
+              disabled={!email || !password}
+              block
+            >
+              {registering ? "Create account" : "Sign in"}
+            </Button>
+
+            <div className="sign-in-switch">
+              {registering
+                ? "Already have an account?"
+                : "New to CareerPolaris?"}
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setMode(registering ? "sign-in" : "register");
+                  setError(null);
+                }}
+              >
+                {registering ? "Sign in" : "Create an account"}
+              </Button>
+            </div>
+
+            {/* Said plainly rather than discovered later. */}
+            <p className="sign-in-footnote">
+              {methods.platform_ai
+                ? "Sign in with Google to start on CareerPolaris AI's free monthly quota, or add your own AI provider and key after signing in."
+                : "After signing in you add your own AI provider and key; nothing is analysed until you do."}{" "}
+              No password reset yet, and addresses are not verified.
+              {methods.google &&
+                " Signing in with Google proves your address: an account with the same address is linked to Google, and any password on it stops working."}{" "}
+              <a href={PRIVACY_PATH}>Privacy policy</a>
+            </p>
+          </form>
         </div>
       </div>
     </div>
   );
 }
-
-const PITCH = [
-  {
-    title: "Evidence, not self-assessment",
-    note: "Every score cites the commit, ticket or résumé line it came from.",
-  },
-  {
-    title: "Roles from real openings",
-    note: "Grouped from public job boards in the markets you choose.",
-  },
-  {
-    title: "A plan to close the distance",
-    note: "Milestones against the one role and company you pick.",
-  },
-  {
-    title: "Your model, your key",
-    note: "Every AI call runs on a provider you already pay for.",
-  },
-];

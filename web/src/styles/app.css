@@ -1771,3 +1771,129 @@ select.input { appearance: auto; }
 }
 .resume-page-note { margin: 0 0 0 auto; }
 .resume-version select { width: auto; max-width: 100%; }
+
+/* --- sign in (prototype: 00 Sign in, option B) ---------------------------- */
+
+.sign-in {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  grid-template-areas:
+    "brand aside"
+    "pitch aside";
+  align-content: center;
+  column-gap: 20px;
+  row-gap: 28px;
+  min-height: 100vh;
+}
+.sign-in .sign-in-brand {
+  grid-area: brand;
+  align-self: end;
+  padding: 48px 48px 0 64px;
+  font-size: 20px;
+}
+.sign-in-pitch {
+  grid-area: pitch;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 0 48px 48px 64px;
+}
+.sign-in-figure { margin: 0; max-width: 680px; }
+.sign-in-headline {
+  margin: 0 0 12px;
+  font-size: 40px;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  max-width: 680px;
+}
+.sign-in-lead { margin: 0; line-height: 1.6; }
+.sign-in-aside {
+  grid-area: aside;
+  align-self: center;
+  display: flex;
+  justify-content: center;
+  padding: 40px 64px 40px 20px;
+}
+.sign-in-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+}
+.sign-in-heading { margin: 0 0 14px; font-size: 25px; }
+/* The card is the surface colour, so its controls take the page's. */
+.sign-in-card .input,
+.sign-in-card .sign-in-google { background: var(--color-bg); }
+.sign-in-card .input,
+.sign-in-card .btn { min-height: 44px; }
+.sign-in-card .btn-primary { font-size: 15px; }
+.sign-in-google {
+  width: 100%;
+  font-family: var(--font-body);
+  font-weight: 600;
+}
+.sign-in-card .sign-in-google:hover {
+  background: color-mix(in srgb, var(--color-text) 7%, var(--color-bg));
+}
+.sign-in-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  font-size: 12.5px;
+  color: var(--color-neutral-700);
+}
+.sign-in-divider::before,
+.sign-in-divider::after {
+  content: "";
+  flex-grow: 1;
+  height: 1px;
+  background: var(--color-divider);
+}
+.sign-in-switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 10px;
+  font-size: 13.5px;
+  color: var(--color-neutral-800);
+}
+.sign-in-switch .btn-ghost {
+  color: var(--color-accent-700);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 13.5px;
+}
+.sign-in-footnote {
+  margin: 12px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-neutral-700);
+}
+
+/* A phone signs in first: the form, then the picture. */
+@media (max-width: 1000px) {
+  .sign-in {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "brand"
+      "aside"
+      "pitch";
+    align-content: start;
+    row-gap: 24px;
+  }
+  .sign-in .sign-in-brand { padding: 24px 16px 0; align-self: start; }
+  .sign-in-aside { padding: 0 16px; }
+  .sign-in-pitch { padding: 8px 16px 40px; align-items: center; }
+  .sign-in-pitch > div { max-width: 680px; }
+  .sign-in-figure { width: 100%; }
+  .sign-in-headline { font-size: 32px; }
+}
+@media (max-width: 480px) {
+  .sign-in-card { padding: 24px 20px; }
+}

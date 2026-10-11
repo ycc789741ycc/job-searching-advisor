@@ -144,7 +144,12 @@ async def sign_out_everywhere(response: Response, user: CurrentUser, deps: Deps)
 @router.get("/auth/methods")
 async def sign_in_methods(deps: Deps) -> SignInMethods:
     """Which ways in the sign-in screen should offer."""
-    return SignInMethods(password=True, google=deps.settings.google_sign_in_enabled)
+    settings = deps.settings
+    return SignInMethods(
+        password=True,
+        google=settings.google_sign_in_enabled,
+        platform_ai=settings.google_sign_in_enabled and settings.platform_ai_enabled,
+    )
 
 
 @router.get("/auth/google/start", include_in_schema=False)

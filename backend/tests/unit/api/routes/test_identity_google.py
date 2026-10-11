@@ -231,9 +231,10 @@ class FakeAuth:
         )
 
 
-def _settings(*, enabled: bool = True) -> SimpleNamespace:
+def _settings(*, enabled: bool = True, platform_ai: bool = False) -> SimpleNamespace:
     return SimpleNamespace(
         google_sign_in_enabled=enabled,
+        platform_ai_enabled=platform_ai,
         oauth_redirect_base_url=WEB,
         auth_cookie_secure=False,
         auth_refresh_token_ttl_days=30,
@@ -381,10 +382,32 @@ def test_google_refusing_the_code_is_reported_without_detail(
 def test_when_google_is_not_configured_nothing_goes_to_google() -> None:
     client = _client(SimpleNamespace(settings=_settings(enabled=False), google_sign_in=None))
 
-    assert client.get("/api/v1/auth/methods").json() == {"password": True, "google": False}
+    assert client.get("/api/v1/auth/methods").json() == {
+        "password": True,
+        "google": False,
+        "platform_ai": False,
+    }
     response = client.get("/api/v1/auth/google/start")
     assert _error_in(response) == "not_configured"
 
 
 def test_the_sign_in_screen_is_told_google_is_on(client: TestClient) -> None:
-    assert client.get("/api/v1/auth/methods").json() == {"password": True, "google": True}
+    assert client.get("/api/v1/auth/methods").json() == {
+        "password": True,
+        "google": True,
+        "platform_ai": False,
+    }
+
+
+def test_the_sign_in_screen_is_told_google_accounts_start_on_careerpolaris_ai() -> None:
+    client = _client(SimpleNamespace(settings=_settings(platform_ai=True), google_sign_in=None))
+
+    assert client.get("/api/v1/auth/methods").json()["platform_ai"] is True
+
+
+def test_careerpolaris_ai_is_not_offered_at_sign_in_without_google() -> None:
+    client = _client(
+        SimpleNamespace(settings=_settings(enabled=False, platform_ai=True), google_sign_in=None)
+    )
+
+    assert client.get("/api/v1/auth/methods").json()["platform_ai"] is False

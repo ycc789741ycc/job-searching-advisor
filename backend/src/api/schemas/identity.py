@@ -39,6 +39,9 @@ class SessionResponse(ApiModel):
 class SignInMethods(ApiModel):
     password: bool
     google: bool
+    # Whether an account signed in with Google starts on CareerPolaris AI
+    # (ADR 0066). Never true without Google: the platform needs its identity.
+    platform_ai: bool
 
 
 class Me(ApiModel):

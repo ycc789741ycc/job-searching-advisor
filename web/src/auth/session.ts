@@ -93,14 +93,23 @@ export async function signOut(): Promise<void> {
 
 export type SignInMethods = components["schemas"]["SignInMethods"];
 
-/** Which ways in to offer. Google is on only when the server is set up for it. */
+/**
+ * Which ways in to offer. Google is on only when the server is set up for it,
+ * and CareerPolaris AI only alongside Google (ADR 0066).
+ */
 export async function signInMethods(): Promise<SignInMethods> {
   const response = await fetch(
     `${loadConfig().apiBaseUrl}/api/v1/auth/methods`,
   );
-  if (!response.ok) return { password: true, google: false };
+  if (!response.ok)
+    return { password: true, google: false, platform_ai: false };
   const payload = (await response.json()) as Partial<SignInMethods> | null;
-  return { password: true, google: payload?.google === true };
+  const google = payload?.google === true;
+  return {
+    password: true,
+    google,
+    platform_ai: google && payload?.platform_ai === true,
+  };
 }
 
 /**
