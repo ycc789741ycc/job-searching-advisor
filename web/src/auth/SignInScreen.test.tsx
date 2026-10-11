@@ -173,9 +173,9 @@ describe("sign-in screen", () => {
     const user = userEvent.setup();
     renderScreen();
 
-    await user.click(screen.getByRole("button", { name: "Create one" }));
+    await user.click(screen.getByRole("button", { name: "Create an account" }));
     expect(
-      screen.getByRole("heading", { name: "Create an account" }),
+      screen.getByRole("heading", { name: "Create your account" }),
     ).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("Email"), "new@example.com");
@@ -198,13 +198,42 @@ describe("sign-in screen", () => {
     renderScreen();
     expect(screen.getByText(/no password reset yet/i)).toBeInTheDocument();
   });
+
+  it("welcomes back by default", async () => {
+    renderScreen();
+    expect(
+      await screen.findByRole("heading", { name: "Welcome back" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows how CareerPolaris works as one named figure", async () => {
+    renderScreen();
+    expect(
+      await screen.findByRole("figure", {
+        name: /^How CareerPolaris works: 1, evidence/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("switches back to signing in from registration", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await user.click(screen.getByRole("button", { name: "Create an account" }));
+    // Registering, the submit is "Create account" and "Sign in" only switches.
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(
+      screen.getByRole("heading", { name: "Welcome back" }),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("field accessibility", () => {
   it("names the password field 'Password', not the whole hint sentence", async () => {
     const user = userEvent.setup();
     renderScreen();
-    await user.click(screen.getByRole("button", { name: "Create one" }));
+    await user.click(screen.getByRole("button", { name: "Create an account" }));
 
     const password = screen.getByLabelText("Password");
     // The hint is help text, announced as a description rather than a name.
@@ -214,7 +243,7 @@ describe("field accessibility", () => {
 });
 
 describe("signing in with Google", () => {
-  function methods(google: boolean) {
+  function methods(google: boolean, platformAi = false) {
     fetchMock.mockImplementation(async (input: unknown) => {
       const url = String(input);
       if (url.endsWith("/auth/refresh")) {
@@ -224,7 +253,11 @@ describe("signing in with Google", () => {
         );
       }
       if (url.endsWith("/auth/methods")) {
-        return jsonResponse({ password: true, google });
+        return jsonResponse({
+          password: true,
+          google,
+          platform_ai: platformAi,
+        });
       }
       return jsonResponse(sessionBody("maya@example.com"));
     });
@@ -260,6 +293,61 @@ describe("signing in with Google", () => {
     );
     expect(
       screen.queryByRole("link", { name: "Continue with Google" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers Google before the email form", async () => {
+    methods(true);
+    renderScreen();
+
+    const link = await screen.findByRole("link", {
+      name: "Continue with Google",
+    });
+    expect(
+      link.compareDocumentPosition(screen.getByLabelText("Email")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("says a Google account starts on CareerPolaris AI when the platform is on", async () => {
+    methods(true, true);
+    renderScreen();
+
+    expect(
+      await screen.findByText(/start on CareerPolaris AI's free monthly quota/),
+    ).toBeInTheDocument();
+  });
+
+  it("says to bring your own provider and key when the platform is off", async () => {
+    methods(true, false);
+    renderScreen();
+
+    await screen.findByRole("link", { name: "Continue with Google" });
+    expect(
+      screen.getByText(/you add your own AI provider and key/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/CareerPolaris AI/)).not.toBeInTheDocument();
+  });
+
+  it("warns that Google takes over a password account only when Google is offered", async () => {
+    methods(true);
+    const { unmount } = renderScreen();
+    expect(
+      await screen.findByText(/any password on it stops working/),
+    ).toBeInTheDocument();
+    unmount();
+
+    methods(false);
+    renderScreen();
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(([url]) =>
+          String(url).endsWith("/auth/methods"),
+        ).length,
+      ).toBe(2),
+    );
+    expect(
+      screen.queryByText(/any password on it stops working/),
     ).not.toBeInTheDocument();
   });
 
